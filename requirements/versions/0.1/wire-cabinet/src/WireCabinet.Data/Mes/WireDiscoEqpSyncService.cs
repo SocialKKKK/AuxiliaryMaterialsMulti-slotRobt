@@ -79,8 +79,8 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
             ["disco_eqp_no"] = DiscoEqpNo
         });
 
-        if (result.HasError)
-            return FailInline(lot, WireMesDiscoAction.Set, kind, result.Error ?? "MES SET 失败");
+        if (MesWriteFailed(result))
+            return FailInline(lot, WireMesDiscoAction.Set, kind, result.Error ?? "MES SET 未生效（影响 0 行）。");
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Set);
         return new WireDiscoSyncResult(true, false, "MES SET 成功。");
@@ -106,8 +106,8 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
             return FailInline(lot, WireMesDiscoAction.Clear, kind, "未找到 mes.wire.clear_disco_eqp_no SQL 条目。");
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        if (result.HasError)
-            return FailInline(lot, WireMesDiscoAction.Clear, kind, result.Error ?? "MES CLEAR 失败");
+        if (MesWriteFailed(result))
+            return FailInline(lot, WireMesDiscoAction.Clear, kind, result.Error ?? "MES CLEAR 未生效（影响 0 行）。");
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Clear);
         return new WireDiscoSyncResult(true, false, "MES CLEAR 成功。");
@@ -206,8 +206,8 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
             return new WireDiscoSyncResult(false, false, "SQL 条目缺失。");
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot, ["disco_eqp_no"] = DiscoEqpNo });
-        if (result.HasError)
-            return new WireDiscoSyncResult(false, false, result.Error ?? "SET 失败");
+        if (MesWriteFailed(result))
+            return new WireDiscoSyncResult(false, false, result.Error ?? "SET 未生效（影响 0 行）。");
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Set);
         _audit?.Append("manual_set", lot, $"DISCOEQPNO={DiscoEqpNo}");
@@ -222,8 +222,8 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
             return new WireDiscoSyncResult(false, false, "SQL 条目缺失。");
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        if (result.HasError)
-            return new WireDiscoSyncResult(false, false, result.Error ?? "CLEAR 失败");
+        if (MesWriteFailed(result))
+            return new WireDiscoSyncResult(false, false, result.Error ?? "CLEAR 未生效（影响 0 行）。");
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Clear);
         _audit?.Append("manual_clear", lot, "DISCOEQPNO=NULL");
@@ -244,6 +244,15 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
         _pending.UpsertPending(lot, action, kind, error);
         return new WireDiscoSyncResult(false, true, WireMesDiscoMessages.InlineFailUser);
     }
+
+    /// <summary>
+    /// MES 写入是否未生效。UPDATE 影响 0 行时 Oracle 与 SQLite 都不报错，
+    /// 但 sublot 在 fw_material_indetail 中不存在本身就是失败——只判 HasError
+    /// 会把它报成成功，并把待补偿状态标成已同步。判定与
+    /// <see cref="SqliteOperationLogSink.TryWrite"/> 保持一致。
+    /// </summary>
+    private static bool MesWriteFailed(DbResult result) =>
+        result.HasError || result.RowsAffected < 1;
 
     private SqlCatalogItem? ResolveMesItem(string formalId)
     {
@@ -267,24 +276,39 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
 
     private bool IsAlreadySetInMes(string lot)
     {
-        var current = QueryMesDisco(lot);
+        // 读失败时不跳过：交给后面的 SET 由影响行数定夺，避免把“不知道”当成“已同步”。
+        if (!TryQueryMesDisco(lot, out var current))
+            return false;
+
         return !string.IsNullOrWhiteSpace(current)
                && string.Equals(current, DiscoEqpNo, StringComparison.Ordinal);
     }
 
     private bool IsAlreadyClearInMes(string lot)
     {
-        var current = QueryMesDisco(lot);
+        // 读失败不能当成“已是 NULL”——否则 CLEAR 会在完全没写 MES 的情况下报成功。
+        if (!TryQueryMesDisco(lot, out var current))
+            return false;
+
         return string.IsNullOrWhiteSpace(current);
     }
 
-    private string? QueryMesDisco(string lot)
+    /// <summary>
+    /// 读取 MES 当前 DISCOEQPNO。返回 false 表示**读取失败**，
+    /// 与“读到了 NULL”（返回 true 且 value 为 null）是两回事，调用方必须区分。
+    /// </summary>
+    private bool TryQueryMesDisco(string lot, out string? value)
     {
+        value = null;
+
         var item = ResolveMesItem("mes.wire.query_disco_by_lot");
-        if (item is null) return null;
+        if (item is null) return false;
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        return result.First?.GetValueOrDefault("DISCOEQPNO")?.ToString();
+        if (result.HasError) return false;
+
+        value = result.First?.GetValueOrDefault("DISCOEQPNO")?.ToString();
+        return true;
     }
 
     private static long ToLong(object? value) => value switch

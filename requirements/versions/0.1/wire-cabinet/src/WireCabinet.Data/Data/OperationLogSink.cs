@@ -94,8 +94,9 @@ public sealed class SqliteOperationLogSink : IOperationLogSink
 
             var result = _appDb.Run(item, ToParameters(entry));
 
-            // 只判 HasError 是不够的：影响 0 行意味着记录并没有写进去，同样必须按失败处理
-            // （对照：WireDiscoEqpSyncService 只看 HasError，空表上的 UPDATE 会被判成功——那是假成功）。
+            // 只判 HasError 是不够的：影响 0 行意味着记录并没有写进去，同样必须按失败处理。
+            // MES DISCOEQPNO 同步（WireDiscoEqpSyncService.MesWriteFailed）用同一判定——
+            // 那两处曾因只看 HasError 把 0 行更新报成成功。
             if (result.HasError)
                 return HandleFailure(entry, result.Error!);
             if (result.RowsAffected < 1)

@@ -62,19 +62,35 @@ public static class OperationLogSchema
             Exec(conn, $"CREATE INDEX IF NOT EXISTS {name} ON app_operation_log({columns});");
 
         Exec(conn, PendingTableSql);
+
+        // 待补偿表同样要补列：老库里该表已存在，CREATE TABLE IF NOT EXISTS 不会加列。
+        foreach (var (column, definition) in PendingColumns)
+            EnsureColumn(conn, "operation_log_pending", column, definition);
     }
 
     /// <summary>待补偿表：记录写入失败时转存整条记录（JSON），供后台重试与人工重试。</summary>
     private const string PendingTableSql = """
         CREATE TABLE IF NOT EXISTS operation_log_pending (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts          TEXT NOT NULL DEFAULT (datetime('now')),
-            entry_json  TEXT NOT NULL,
-            retry_count INTEGER NOT NULL DEFAULT 0,
-            last_error  TEXT,
-            last_try_ts TEXT
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts            TEXT NOT NULL DEFAULT (datetime('now')),
+            entry_json    TEXT NOT NULL,
+            status        TEXT NOT NULL DEFAULT 'pending',
+            retry_count   INTEGER NOT NULL DEFAULT 0,
+            next_retry_at TEXT,
+            last_error    TEXT,
+            last_try_ts   TEXT
         );
         """;
+
+    /// <summary>
+    /// 待补偿表在 0.2 期间新增的列。status 用于区分 pending / failed / success，
+    /// next_retry_at 供后台按退避重试。
+    /// </summary>
+    private static readonly (string Column, string Definition)[] PendingColumns =
+    {
+        ("status", "TEXT NOT NULL DEFAULT 'pending'"),
+        ("next_retry_at", "TEXT"),
+    };
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string definition)
     {

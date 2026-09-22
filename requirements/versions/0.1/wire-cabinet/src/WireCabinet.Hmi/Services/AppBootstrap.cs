@@ -15,8 +15,8 @@ public sealed class AppBootstrap : IDisposable
     public SqlCatalog Catalog { get; }
     public IMesGateway Mes { get; }
     public IAppDb AppDbGateway { get; }
-    /// <summary>物料存取记录写入通道（0.2）。</summary>
-    public IOperationLogSink OperationLog { get; }
+    /// <summary>物料存取记录写入通道与失败补偿（0.2）。</summary>
+    public SqliteOperationLogSink OperationLog { get; }
     public SlotIoConfig SlotIo { get; }
     public ISlotHardwareService Hardware { get; }
     public DoorOperationGate DoorOps { get; }

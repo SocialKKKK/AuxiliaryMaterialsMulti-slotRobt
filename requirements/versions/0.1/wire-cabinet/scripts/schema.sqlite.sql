@@ -70,13 +70,17 @@ CREATE INDEX IF NOT EXISTS ix_app_operation_log_operator_id ON app_operation_log
 CREATE INDEX IF NOT EXISTS ix_app_operation_log_eqp_no ON app_operation_log(eqp_no);
 
 -- 记录写入失败时的待补偿队列（写失败不阻断业务，整条记录转存于此）
+-- status: pending / failed / success；next_retry_at 供后台按退避重试。
+-- 老库已有的该表由 OperationLogSchema.Ensure 做幂等列迁移，这里改了要同步那边。
 CREATE TABLE IF NOT EXISTS operation_log_pending (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts          TEXT NOT NULL DEFAULT (datetime('now')),
-    entry_json  TEXT NOT NULL,
-    retry_count INTEGER NOT NULL DEFAULT 0,
-    last_error  TEXT,
-    last_try_ts TEXT
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            TEXT NOT NULL DEFAULT (datetime('now')),
+    entry_json    TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    retry_count   INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    last_error    TEXT,
+    last_try_ts   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS agv_move_log (

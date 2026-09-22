@@ -28,6 +28,7 @@ public partial class App : Application
     public static FlowTraceHub? FlowTrace { get; private set; }
 
     public static WireMesDiscoRetryTimer? MesDiscoRetry { get; private set; }
+    public static OperationLogRetryTimer? OperationLogRetry { get; private set; }
     public static KioskOptions Kiosk { get; private set; } = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -84,6 +85,11 @@ public partial class App : Application
             Bootstrap.MesReconciliation,
             TimeSpan.FromMinutes(2));
         MesDiscoRetry.Start();
+
+        OperationLogRetry = new OperationLogRetryTimer(
+            Bootstrap.OperationLog,
+            TimeSpan.FromMinutes(2));
+        OperationLogRetry.Start();
 
         var doorReconciler = new DoorStateReconciler(Bootstrap.SlotControl, Bootstrap.Hardware);
         SlotHardwarePoll.SetAfterPoll(async snapshots =>

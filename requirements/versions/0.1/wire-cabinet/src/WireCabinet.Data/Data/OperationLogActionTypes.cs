@@ -29,6 +29,12 @@ public static class OperationLogActionTypes
     /// </summary>
     public const string MhAssumeEmpty = "mh_assume_empty";
 
+    /// <summary>AGV 控车（第 8 项）：下单 / 暂停 / 继续 / 取消 / 返航，具体动作写在 message 里。</summary>
+    public const string AgvMove = "agv_move";
+
+    /// <summary>AGV 自动回充（第 8 项）。</summary>
+    public const string AgvCharge = "agv_charge";
+
     /// <summary>查看记录页本身也留痕（§3.7）。</summary>
     public const string ViewLog = "view_operation_log";
 
@@ -48,6 +54,8 @@ public static class OperationLogActionTypes
         (MhOpenSlotsBatch, "MH 批量打开格口"),
         (MaintTrialOpen, "维护试开格口"),
         (MhAssumeEmpty, "开门即清空"),
+        (AgvMove, "AGV 控车"),
+        (AgvCharge, "AGV 自动回充"),
         (ViewLog, "查看存取记录"),
         (ExportLog, "导出存取记录"),
     ];

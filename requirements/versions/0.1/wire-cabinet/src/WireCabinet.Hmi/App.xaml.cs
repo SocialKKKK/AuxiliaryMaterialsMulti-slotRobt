@@ -73,7 +73,7 @@ public partial class App : Application
         var stations = WireCabinet.Rcs.StationConfiguration.Load();
         StationGate = new WireCabinet.Rcs.StationArrivalGate(stations);
         var doors = new WireCabinet.Slots.CabinetDoorStateProvider(Bootstrap.SlotControl);
-        Agv = new AgvServices(config, Bootstrap.SlotControl, doors);
+        Agv = new AgvServices(config, Bootstrap.SlotControl, doors, Bootstrap.OperationLog);
         UiGate = new HmiUiGateService();
         IoHealth = new IoModuleHealthMonitor(Bootstrap.Hardware, Bootstrap.SlotIo);
         SlotHardwarePoll = new SlotHardwarePollService(Bootstrap.Hardware, Bootstrap.SlotIo.HealthCheckIntervalMs);

@@ -1,4 +1,4 @@
-using AgvDispatch.Sdk;
+﻿using AgvDispatch.Sdk;
 using AgvDispatch.Sdk.Models;
 using Microsoft.Extensions.Configuration;
 using WireCabinet.Core.Config;
@@ -16,6 +16,9 @@ public sealed class AgvServices : IDisposable
     private readonly AgvThresholdOptions _thresholds;
     private readonly AgvOrderGate _orderGate;
     private readonly ISlotControlService _slots;
+
+    /// <summary>控车与回充的记录（0.2 §3.1 第 8 项）。</summary>
+    private readonly AgvActionLog _agvLog;
     private IAgvDispatchClient? _client;
     private VehicleSnapshot _lastSnapshot = new();
     private bool _startupCleanupDone;
@@ -57,9 +60,11 @@ public sealed class AgvServices : IDisposable
     public int RecommendedPollIntervalMs => _options.RecommendedPollIntervalMs;
     public DoorInterlockTickResult? LastDoorInterlockTick { get; private set; }
 
-    public AgvServices(IConfiguration config, ISlotControlService slots, IDoorStateProvider doors)
+    public AgvServices(IConfiguration config, ISlotControlService slots, IDoorStateProvider doors,
+        WireCabinet.Data.IOperationLogSink? operationLog = null)
     {
         _slots = slots;
+        _agvLog = new AgvActionLog(operationLog);
         Stations = StationConfiguration.Load();
         _thresholds = new AgvThresholdOptions
         {
@@ -175,6 +180,7 @@ public sealed class AgvServices : IDisposable
         var result = await Move.RequestMoveAsync(destination, ct).ConfigureAwait(false);
         await RefreshStatusAsync(ct).ConfigureAwait(false);
         var label = ws?.Name ?? destination.ToString();
+        _agvLog.RecordCommand(AgvActionLog.AgvMove, "下达移动单", result.Ok, result.Message, $"→ {label}（站点 {destination}）");
         return result.Ok
             ? (true, $"{result.Message} → {label}（站点 {destination}）")
             : (false, result.Message);
@@ -212,10 +218,12 @@ public sealed class AgvServices : IDisposable
             Charge.RememberReturnDestinationOnChargeDispatch(LastPosition);
             await RefreshStatusAsync(ct).ConfigureAwait(false);
             var name = Stations.ChargeStation?.Name ?? "充电点";
+            _agvLog.RecordCommand(AgvActionLog.AgvCharge, "下充电单（自动回充）", ok: true, detail: $"→ {name}（{order.OrderId}）");
             return (true, $"已下充电单 → {name}（{order.OrderId}）");
         }
         catch (Exception ex)
         {
+            _agvLog.RecordCommand(AgvActionLog.AgvCharge, "下充电单（自动回充）", ok: false, error: ex.Message);
             return (false, ex.Message);
         }
     }
@@ -238,10 +246,12 @@ public sealed class AgvServices : IDisposable
             ControlLoop?.ResetCallState();
             Move?.ResetSession();
             await RefreshStatusAsync(ct).ConfigureAwait(false);
+            _agvLog.RecordCommand(AgvActionLog.AgvMove, "取消当前订单", ok: true, detail: orderId);
             return (true, "已取消当前订单。");
         }
         catch (Exception ex)
         {
+            _agvLog.RecordCommand(AgvActionLog.AgvMove, "取消当前订单", ok: false, error: ex.Message, detail: orderId);
             return (false, ex.Message);
         }
     }
@@ -311,6 +321,10 @@ public sealed class AgvServices : IDisposable
         Move?.RefreshFromSnapshot(tick.Snapshot);
 
         var openSlots = await _slots.ListOpenInterlockSlotNosAsync(ct).ConfigureAwait(false);
+
+        // 状态迁移才记一条（验收 C5）：静置时 ExecutedAction 为 null，RecordTickAction 不写任何东西
+        _agvLog.RecordTickAction(tick.ExecutedAction);
+
         var statusMessage = tick.ExecutedAction switch
         {
             "PauseMovement" => "检测到格口打开，已暂停 AGV 任务。",

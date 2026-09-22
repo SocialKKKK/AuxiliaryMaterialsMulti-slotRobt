@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using WireCabinet.Data;
 using WireCabinet.Flows;
-using WireCabinet.Slots;
 using Xunit;
 
 namespace WireCabinet.Tests;
@@ -149,40 +148,5 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal("fail", last.Outcome);  // 批号无效 → 终止于失败节点
         var count = db.Query("SELECT COUNT(*) AS c FROM app_operation_log;", new Dictionary<string, object?>()).First;
         Assert.Equal(0L, Convert.ToInt64(count!["c"]));
-    }
-
-    /// <summary>只做开门记账、不做真实硬件动作。</summary>
-    private sealed class FakeSlotController : ISlotController
-    {
-        private readonly HashSet<long> _open = new();
-
-        // 显式空 add/remove：测试不关心 Changed，也避免未使用事件的编译告警。
-        public event EventHandler? Changed { add { } remove { } }
-
-        public IReadOnlyList<SlotDoorState> Slots => Array.Empty<SlotDoorState>();
-
-        public void Reload() { }
-
-        public Task<bool> OpenDoorAsync(long slotId, CancellationToken ct = default)
-        {
-            _open.Add(slotId);
-            return Task.FromResult(true);
-        }
-
-        public Task CloseDoorAsync(long slotId, CancellationToken ct = default)
-        {
-            _open.Remove(slotId);
-            return Task.CompletedTask;
-        }
-
-        public void OpenDoor(long slotId) => _open.Add(slotId);
-
-        public void CloseDoor(long slotId) => _open.Remove(slotId);
-
-        public long? CloseNextOpenDoor() => _open.Count > 0 ? _open.Min() : null;
-
-        public bool AreAllDoorsClosed() => _open.Count == 0;
-
-        public IReadOnlyList<long> OpenDoorIds() => _open.ToList();
     }
 }

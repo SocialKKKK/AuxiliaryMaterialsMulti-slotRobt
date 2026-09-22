@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.Data.Sqlite;
 using WireCabinet.Data;
 using Xunit;
@@ -201,7 +201,7 @@ public class OperationLogExcelExportTests : IDisposable
             Assert.False(insert.HasError, insert.Error);
         }
 
-        var query = new OperationLogQueryService(SqlCatalog.Load(), new SqliteAppDb(db));
+        var query = new OperationLogQueryService(SqlCatalog.Load(), new SqliteAppDb(db), TimeZoneInfo.Utc);
         var filter = new OperationLogFilter { LotNo = "L2", ActionType = "mh_load_available_wire" };
 
         var data = query.ListForExport(filter);

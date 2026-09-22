@@ -1,4 +1,4 @@
-namespace WireCabinet.Data;
+﻿namespace WireCabinet.Data;
 
 /// <summary>
 /// 记录查询的筛选条件（0.2 需求范围 §3.4 的六项 + 时间范围，各项**可选、可任意组合**）。
@@ -25,19 +25,23 @@ public sealed record OperationLogFilter
     /// <c>:x IS NULL OR col = :x</c>，而绑定只绑定 SQL 中出现的参数，
     /// 少传一个就等于把「不限」的语义交给了缺省值。
     ///
-    /// 时间经 <see cref="Pad"/> 补齐：触控界面给的是日期或分钟精度，
-    /// 而 ts 是到秒的字符串，不补齐就会漏掉当天的记录。
+    /// 时间先经 <see cref="Pad"/> 补齐再换算：界面给的是**本地**日期/分钟精度，
+    /// 而库里是 UTC，故需 <see cref="OperationLogTime.ToUtcText"/> 转到 UTC 才能比较
+    /// （只把显示转成本地、不转筛选条件的话，按本地时刻查询会整体偏一个时区）。
     /// </summary>
-    internal Dictionary<string, object?> ToParameters() => new()
+    internal Dictionary<string, object?> ToParameters(TimeZoneInfo zone) => new()
     {
-        ["ts_from"] = Pad(TsFrom, endOfRange: false),
-        ["ts_to"] = Pad(TsTo, endOfRange: true),
+        ["ts_from"] = ToUtc(Pad(TsFrom, endOfRange: false), zone),
+        ["ts_to"] = ToUtc(Pad(TsTo, endOfRange: true), zone),
         ["lot_no"] = Blank(LotNo),
         ["slot_no"] = Blank(SlotNo),
         ["operator_id"] = Blank(OperatorId),
         ["eqp_no"] = Blank(EqpNo),
         ["action_type"] = Blank(ActionType),
     };
+
+    private static string? ToUtc(string? localText, TimeZoneInfo zone) =>
+        OperationLogTime.ToUtcText(localText, zone);
 
     /// <summary>起始晚于结束时返回中文提示，否则 null（§5 异常：时间范围起止颠倒）。</summary>
     public string? TimeRangeError()
@@ -108,10 +112,14 @@ public sealed record OperationLogRecord
     public string? FlowId { get; init; }
     public string? NodeId { get; init; }
 
-    internal static OperationLogRecord FromRow(Dictionary<string, object?> row) => new()
+    /// <summary>
+    /// 从库行构造读模型。时间列（ts / 门开 / 关门）在库里是 UTC，这里换算成
+    /// <paramref name="zone"/> 的本地时间——界面与导出的都是给人看的值。
+    /// </summary>
+    internal static OperationLogRecord FromRow(Dictionary<string, object?> row, TimeZoneInfo zone) => new()
     {
         Id = Convert.ToInt64(row.GetValueOrDefault("id") ?? 0L),
-        Ts = Text(row, "ts"),
+        Ts = OperationLogTime.ToLocalText(Text(row, "ts"), zone),
         OperatorId = Text(row, "operator_id"),
         OperatorName = Text(row, "operator_name"),
         OperatorTeam = Text(row, "operator_team"),
@@ -130,8 +138,8 @@ public sealed record OperationLogRecord
         MesResult = Text(row, "mes_result"),
         LockResult = Text(row, "lock_result"),
         ErrorInfo = Text(row, "error_info"),
-        DoorOpenTs = Text(row, "door_open_ts"),
-        DoorCloseTs = Text(row, "door_close_ts"),
+        DoorOpenTs = OperationLogTime.ToLocalText(Text(row, "door_open_ts"), zone),
+        DoorCloseTs = OperationLogTime.ToLocalText(Text(row, "door_close_ts"), zone),
         IsCleared = Flag(row, "is_cleared"),
         IsUncommanded = Flag(row, "is_uncommanded"),
         FlowId = Text(row, "flow_id"),
@@ -180,11 +188,17 @@ public sealed class OperationLogQueryService
 
     private readonly SqlCatalog _catalog;
     private readonly IAppDb _appDb;
+    private readonly TimeZoneInfo _displayZone;
 
-    public OperationLogQueryService(SqlCatalog catalog, IAppDb appDb)
+    /// <summary>
+    /// <paramref name="displayZone"/> 是「给谁看」的时区，默认本机时区。
+    /// 注入它是为了测试能用固定时区断言换算结果，不随开发机时区变化。
+    /// </summary>
+    public OperationLogQueryService(SqlCatalog catalog, IAppDb appDb, TimeZoneInfo? displayZone = null)
     {
         _catalog = catalog;
         _appDb = appDb;
+        _displayZone = displayZone ?? TimeZoneInfo.Local;
     }
 
     /// <summary>分页查询，默认时间倒序（页码从 1 开始）。</summary>
@@ -194,7 +208,7 @@ public sealed class OperationLogQueryService
             return OperationLogQueryResult.Fail(rangeError);
 
         var size = Math.Max(1, pageSize);
-        var parameters = (filter ?? OperationLogFilter.None).ToParameters();
+        var parameters = (filter ?? OperationLogFilter.None).ToParameters(_displayZone);
         parameters["page_size"] = size;
         parameters["offset"] = (Math.Max(1, page) - 1) * size;
         return Run(SearchSqlId, parameters);
@@ -206,7 +220,7 @@ public sealed class OperationLogQueryService
         if (filter?.TimeRangeError() is { } rangeError)
             return OperationLogQueryResult.Fail(rangeError);
 
-        return Run(ExportSqlId, (filter ?? OperationLogFilter.None).ToParameters());
+        return Run(ExportSqlId, (filter ?? OperationLogFilter.None).ToParameters(_displayZone));
     }
 
     /// <summary>按批号追溯全程，时间正序；批号不存在返回 0 行（不是错误）。</summary>
@@ -232,6 +246,7 @@ public sealed class OperationLogQueryService
         if (result.HasError)
             return OperationLogQueryResult.Fail($"记录查询失败：{result.Error}");
 
-        return OperationLogQueryResult.Ok(result.Rows.Select(OperationLogRecord.FromRow).ToList());
+        return OperationLogQueryResult.Ok(
+            result.Rows.Select(r => OperationLogRecord.FromRow(r, _displayZone)).ToList());
     }
 }

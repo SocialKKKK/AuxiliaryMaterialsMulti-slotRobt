@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using WireCabinet.Data;
 using Xunit;
 
@@ -22,12 +22,17 @@ public class OperationLogQueryTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private static OperationLogQueryService NewService(SqliteDb db) =>
+        new(SqlCatalog.Load(), new SqliteAppDb(db), TimeZoneInfo.Utc);
+
     private (SqliteDb Db, OperationLogQueryService Query) NewQuery()
     {
         var db = new SqliteDb(_dbPath);
         db.Initialize(recreate: true);
         OperationLogSchema.Ensure(db);
-        return (db, new OperationLogQueryService(SqlCatalog.Load(), new SqliteAppDb(db)));
+        // 注入 UTC：本组用例测的是筛选与分页，注入固定时区后断言不随开发机时区变化。
+        // 本地/UTC 的换算另有 OperationLogTimeTests 与 ZoneConversion 专项用例覆盖。
+        return (db, NewService(db));
     }
 
     private static void Add(SqliteDb db, long id, string ts, string lot, string slot, string op, string eqp, string action)
@@ -286,7 +291,7 @@ public class OperationLogQueryTests : IDisposable
     public void Query_WhenCatalogItemMissing_ReportsWhy()
     {
         var (db, _) = NewQuery();
-        var query = new OperationLogQueryService(new SqlCatalog(), new SqliteAppDb(db));
+        var query = new OperationLogQueryService(new SqlCatalog(), new SqliteAppDb(db), TimeZoneInfo.Utc);
 
         var result = query.Search();
 

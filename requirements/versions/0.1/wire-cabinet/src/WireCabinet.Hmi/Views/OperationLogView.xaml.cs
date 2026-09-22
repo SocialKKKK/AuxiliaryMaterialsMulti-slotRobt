@@ -330,7 +330,9 @@ public partial class OperationLogView : UserControl
     private static OperationLogPendingRowVm ToPendingRow(OperationLogPendingRow row) => new()
     {
         Id = row.Id,
-        TsText = row.Ts ?? "",
+        // 入队时间是库里的 UTC 文本，要换算成本地与「下次重试」保持一致
+        // （两者同在一张列表里，一个 UTC 一个本地会让人看不懂）
+        TsText = OperationLogTime.ToLocalText(row.Ts, TimeZoneInfo.Local) ?? "",
         ActionText = OperationLogActionTypes.Label(row.Entry.ActionType),
         LotNo = row.Entry.LotNo ?? "",
         StatusText = row.Status switch

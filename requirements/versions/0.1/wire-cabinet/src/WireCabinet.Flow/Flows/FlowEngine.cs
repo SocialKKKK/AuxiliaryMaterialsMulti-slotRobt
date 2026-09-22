@@ -287,12 +287,11 @@ public sealed class FlowEngine
             }
         }
 
-        // 存取记录（0.2）挂接点：MH 存料真正成功（含上方的 MES 同步）后才记一条。
-        if (key == "success"
-            && string.Equals(node.SqlId, "app.slot.bind_wire", StringComparison.OrdinalIgnoreCase))
-        {
-            LogMhLoadAvailableWire(node, parameters, findings);
-        }
+        // 存取记录（0.2）挂接点：MH 存料的成功与失败都在这里落一条
+        // （§3 覆盖矩阵第 1、9 项：失败不单独成动作类型，而是同一动作的 result=失败）。
+        // 放在 DISCOEQPNO 同步之后，这样 MES 同步失败也会以 result=失败 被记下来。
+        if (string.Equals(node.SqlId, "app.slot.bind_wire", StringComparison.OrdinalIgnoreCase))
+            LogMhLoadAvailableWire(node, parameters, key, findings, result);
         var (next, routeFindings) = Route(node, key);
         findings.AddRange(routeFindings);
 
@@ -423,16 +422,26 @@ public sealed class FlowEngine
     public const string MhLoadActionType = "mh_load_available_wire";
 
     /// <summary>
-    /// MH「存入可用焊丝」成功后写一条存取记录（0.2 需求范围 §3.1 第 1 项）。
+    /// MH「存入可用焊丝」完成后写一条存取记录（0.2 需求范围 §3.1 第 1 项、§3 矩阵第 9 项）。
+    /// 成功记 result=成功，失败记 result=失败 且 error_info 写明原因——失败不单独成动作类型。
     ///
     /// **契约**：写入失败只追加一条告警，**绝不改变本节点的 outcome / 路由**，
     /// 也不与业务写入共用事务（0.2 需求范围 §1.4 第 1 条，验收 §9 C1）。
     /// 上方 DISCOEQPNO 同步挂接位于同一位置，但它在失败时会把 key 改成 "error"——
     /// 记录写入不得沿用该写法。
     /// </summary>
-    private void LogMhLoadAvailableWire(FlowNode node, IDictionary<string, object?> parameters, List<Finding> findings)
+    private void LogMhLoadAvailableWire(
+        FlowNode node, IDictionary<string, object?> parameters, string key, List<Finding> findings, DbResult result)
     {
         if (_svc.OperationLog is not { } sink) return;
+
+        var success = string.Equals(key, "success", StringComparison.Ordinal);
+
+        // MES 同步挂接失败时会把原因写成同节点上的「MES 同步」finding，据此区分
+        // 「MES 调用失败」与「应用库写入失败」，前者才计入 mes_result。
+        var syncError = findings
+            .LastOrDefault(f => string.Equals(f.Category, WireMesDiscoMessages.FindingCategory, StringComparison.Ordinal))
+            ?.Message;
 
         // 格位号复用 checkAvailableSlot 已有的查询结果（app.slot.find_available 已返回 slot_no），
         // 不新增查询（验收 §9 C6：不得为记录功能新增 MES / 库调用）。
@@ -448,9 +457,11 @@ public sealed class FlowEngine
             LotNo = ParamText(parameters, "wire_lot_no"),
             WireSpec = ParamText(parameters, "wire_spec"),
             Qty = ParamNumber(parameters, "qty"),
-            Result = "成功",
-            Message = "存料完成",
-            MesResult = "ok",
+            Result = success ? "成功" : "失败",
+            Message = success ? "存料完成" : "存料失败",
+            ErrorInfo = success ? null : result.Error ?? syncError ?? "存料失败",
+            MesResult = success ? "ok" : syncError,
+            // 能走到 updateDB 说明格口已经开过并关过，两种结果下都成立
             LockResult = "ok",
         });
 

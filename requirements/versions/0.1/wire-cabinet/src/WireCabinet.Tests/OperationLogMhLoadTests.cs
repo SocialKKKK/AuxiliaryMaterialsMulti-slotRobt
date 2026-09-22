@@ -34,8 +34,12 @@ public class OperationLogMhLoadTests : IDisposable
     /// <summary>
     /// 建库并装配引擎。seedMesWire=true 时在 mock MES 里放一条该批号的「焊丝」记录，
     /// 否则流程会在校验批号时终止。
+    ///
+    /// failingMesSync=true 时接上 DISCOEQPNO 同步并让它的 SET 固定失败，
+    /// 用来复现「MES 报错」这一失败分支（mock 里难以用数据造出：规格查询与 SET
+    /// 命中同一张表的同一行，能查到就一定能更新到）。
     /// </summary>
-    private (SqliteDb Db, FlowEngine Engine) NewEngine(bool seedMesWire = true)
+    private (SqliteDb Db, FlowEngine Engine) NewEngine(bool seedMesWire = true, bool failingMesSync = false)
     {
         var db = new SqliteDb(_dbPath);
         db.Initialize(recreate: true);
@@ -53,17 +57,41 @@ public class OperationLogMhLoadTests : IDisposable
             Assert.False(seed.HasError, seed.Error);
         }
 
+        var catalog = SqlCatalog.Load();
         var appDb = new SqliteAppDb(db);
+        IMesGateway gateway = new SqliteMockMesGateway(db, new MesFunctionSettings());
+        if (failingMesSync)
+            gateway = new DiscoSetFailsGateway(gateway);
+
         var services = new EngineServices
         {
-            Catalog = SqlCatalog.Load(),
+            Catalog = catalog,
             AppDb = appDb,
-            Mes = new SqliteMockMesGateway(db, new MesFunctionSettings()),
+            Mes = gateway,
             Slot = new FakeSlotController(),
-            OperationLog = new SqliteOperationLogSink(SqlCatalog.Load(), appDb),
+            OperationLog = new SqliteOperationLogSink(catalog, appDb),
+            DiscoSync = failingMesSync
+                ? new WireDiscoEqpSyncService(
+                    catalog, appDb, gateway, new WireMesDiscoSyncStore(db), "DISCO-01", new MesReconAuditLogStore(db))
+                : null,
         };
 
         return (db, new FlowEngine(services));
+    }
+
+    /// <summary>让 DISCOEQPNO 的 SET 固定失败，其余调用透传。</summary>
+    private sealed class DiscoSetFailsGateway : IMesGateway
+    {
+        private readonly IMesGateway _inner;
+
+        public DiscoSetFailsGateway(IMesGateway inner) => _inner = inner;
+
+        public MesMode Mode => _inner.Mode;
+
+        public DbResult Run(SqlCatalogItem item, IDictionary<string, object?> parameters) =>
+            item.Id.Contains("set_disco_eqp_no", StringComparison.OrdinalIgnoreCase)
+                ? DbResult.Failure(item.Sql, "ORA-04068: 包状态已丢弃")
+                : _inner.Run(item, parameters);
     }
 
     /// <summary>跑完整条流程，返回结束时的 trace。</summary>
@@ -148,5 +176,27 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal("fail", last.Outcome);  // 批号无效 → 终止于失败节点
         var count = db.Query("SELECT COUNT(*) AS c FROM app_operation_log;", new Dictionary<string, object?>()).First;
         Assert.Equal(0L, Convert.ToInt64(count!["c"]));
+    }
+
+    /// <summary>
+    /// §3 覆盖矩阵第 9 项：操作失败要记录 result=失败 且 error_info 有原因，
+    /// 且失败**不单独成动作类型**，仍是同一动作的一条记录。
+    /// </summary>
+    [Fact]
+    public void MhLoad_WhenMesSyncFails_RecordsFailureWithReason()
+    {
+        var (db, engine) = NewEngine(failingMesSync: true);
+
+        var last = RunToEnd(engine, Lot);
+
+        // MES 同步失败会把流程 outcome 改成 error（既有行为，不由记录功能决定）
+        Assert.Equal("fail", last.Outcome);
+        Assert.Equal("endFail", last.NodeId);
+
+        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.Equal("mh_load_available_wire", row["action_type"]); // 与成功记录同一动作类型
+        Assert.Equal("失败", row["result"]);
+        Assert.Equal(Lot, row["lot_no"]);
+        Assert.False(string.IsNullOrWhiteSpace(row["error_info"]?.ToString()), "失败必须写明原因。");
     }
 }

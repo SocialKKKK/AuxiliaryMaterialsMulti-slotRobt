@@ -15,6 +15,8 @@ public sealed class AppBootstrap : IDisposable
     public SqlCatalog Catalog { get; }
     public IMesGateway Mes { get; }
     public IAppDb AppDbGateway { get; }
+    /// <summary>物料存取记录写入通道（0.2）。</summary>
+    public IOperationLogSink OperationLog { get; }
     public SlotIoConfig SlotIo { get; }
     public ISlotHardwareService Hardware { get; }
     public DoorOperationGate DoorOps { get; }
@@ -51,6 +53,10 @@ public sealed class AppBootstrap : IDisposable
 
         WireMesDiscoSchema.EnsureAll(AppDb);
 
+        // 物料存取记录（0.2）：schema 脚本用的是 CREATE TABLE IF NOT EXISTS，
+        // 对已存在的库不会加列，必须在这里幂等补列，否则现场老库会 no such column。
+        OperationLogSchema.Ensure(AppDb);
+
         InterruptedLoad = new MhInterruptedLoadStore(AppDb);
         InterruptedLoad.EnsureSchema();
 
@@ -75,6 +81,11 @@ public sealed class AppBootstrap : IDisposable
             : new SqliteMockMesGateway(AppDb, new MesFunctionSettings());
 
         AppDbGateway = new SqliteAppDb(AppDb);
+
+        // 物料存取记录（0.2）写入通道。业务动作成功后就地调用：
+        // 失败只告警 + 转待补偿，**不得改变业务 outcome**——调用方须遵守该契约。
+        OperationLog = new SqliteOperationLogSink(Catalog, AppDbGateway);
+
         SlotIo = SlotIoConfig.Load();
         Hardware = new ModbusSlotHardwareService(SlotIo);
         DoorOps = new DoorOperationGate();

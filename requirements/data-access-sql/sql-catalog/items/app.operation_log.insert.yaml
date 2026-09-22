@@ -1,0 +1,53 @@
+id: app.operation_log.insert
+dialect: sqlite
+datasource: app.sqlite
+operation: write
+business_meaning: >-
+  写入一条物料存取记录（一次业务操作一条）。
+  由 0.2「物料存取记录与追溯」功能在所有存取动作成功后调用，用于产线追溯物料动向。
+  写入失败**不得阻断业务**：调用方（IOperationLogSink 实现）负责转入 operation_log_pending 待补偿，
+  并且必须同时检查 rows_affected——影响 0 行意味记录没写进去，同样按失败处理。
+sql: |
+  INSERT INTO app_operation_log (
+      operator_id, operator_name, operator_team, operator_role, action_type,
+      slot_no, lot_no, wire_spec, eqp_no, product_lot_no,
+      qty, remain_qty, station, result, message,
+      mes_result, lock_result, error_info,
+      door_open_ts, door_close_ts, is_cleared, is_uncommanded,
+      flow_id, node_id
+  ) VALUES (
+      :operator_id, :operator_name, :operator_team, :operator_role, :action_type,
+      :slot_no, :lot_no, :wire_spec, :eqp_no, :product_lot_no,
+      :qty, :remain_qty, :station, :result, :message,
+      :mes_result, :lock_result, :error_info,
+      :door_open_ts, :door_close_ts, :is_cleared, :is_uncommanded,
+      :flow_id, :node_id
+  );
+params:
+  - name: operator_id
+  - name: operator_name
+  - name: operator_team
+  - name: operator_role
+  - name: action_type
+  - name: slot_no
+  - name: lot_no
+  - name: wire_spec
+  - name: eqp_no
+  - name: product_lot_no
+  - name: qty
+  - name: remain_qty
+  - name: station
+  - name: result
+  - name: message
+  - name: mes_result
+  - name: lock_result
+  - name: error_info
+  - name: door_open_ts
+  - name: door_close_ts
+  - name: is_cleared
+  - name: is_uncommanded
+  - name: flow_id
+  - name: node_id
+outputs:
+  - rows_affected
+result_cardinality: write

@@ -28,3 +28,5 @@ sql_items_index:
     path: items/app.slot.get_inventory.yaml
   - id: app.returned_weight.get_by_spec
     path: items/app.returned_weight.get_by_spec.yaml
+  - id: app.operation_log.insert
+    path: items/app.operation_log.insert.yaml

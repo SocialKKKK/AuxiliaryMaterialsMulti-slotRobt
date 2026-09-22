@@ -48,6 +48,14 @@ packages/
 *.coverage
 *.coveragexml
 
+# 本机/现场配置与运行时数据（勿提交）
+# appsettings.Local.json：每位开发者的本地配置
+# io-modules.yaml：按 README 由 io-modules.template.yaml 复制生成，含现场内网 IP 与 MAC
+# data/app.db：运行时 SQLite 应用库，跑一次程序就会被修改（且会写入 MES-DISCO 待重试状态）
+appsettings.Local.json
+io-modules.yaml
+requirements/versions/0.1/wire-cabinet/data/app.db
+
 # 其它常见临时文件
 *.tmp
 *.bak

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    只引用非 WPF 层：WireCabinet.Hmi 是 net8.0-windows，net8.0 测试工程无法引用。
+    因此挂在 Hmi 里的逻辑（MhDoorOnlyService / AgvServices）暂不可自动化测试，
+    需要覆盖时先把判定逻辑下沉到 Slots / Rcs。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\WireCabinet.Core\WireCabinet.Core.csproj" />
+    <ProjectReference Include="..\WireCabinet.Data\WireCabinet.Data.csproj" />
+    <ProjectReference Include="..\WireCabinet.Flow\WireCabinet.Flow.csproj" />
+    <ProjectReference Include="..\WireCabinet.Slots\WireCabinet.Slots.csproj" />
+    <ProjectReference Include="..\WireCabinet.Rcs\WireCabinet.Rcs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>

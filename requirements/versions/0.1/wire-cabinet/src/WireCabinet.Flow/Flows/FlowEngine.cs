@@ -286,6 +286,13 @@ public sealed class FlowEngine
                 }
             }
         }
+
+        // 存取记录（0.2）挂接点：MH 存料真正成功（含上方的 MES 同步）后才记一条。
+        if (key == "success"
+            && string.Equals(node.SqlId, "app.slot.bind_wire", StringComparison.OrdinalIgnoreCase))
+        {
+            LogMhLoadAvailableWire(node, parameters, findings);
+        }
         var (next, routeFindings) = Route(node, key);
         findings.AddRange(routeFindings);
 
@@ -409,6 +416,56 @@ public sealed class FlowEngine
         var findings = new List<Finding> { Err(node, "未知节点类型", $"无法识别的节点类型 '{node.RawType}'。") };
         return Build(node, "error", null, "", "未知节点类型", findings, Severity.Error);
     }
+
+    // ---------- 存取记录（0.2） ----------
+
+    /// <summary>MH 存入可用焊丝的记录动作类型。</summary>
+    public const string MhLoadActionType = "mh_load_available_wire";
+
+    /// <summary>
+    /// MH「存入可用焊丝」成功后写一条存取记录（0.2 需求范围 §3.1 第 1 项）。
+    ///
+    /// **契约**：写入失败只追加一条告警，**绝不改变本节点的 outcome / 路由**，
+    /// 也不与业务写入共用事务（0.2 需求范围 §1.4 第 1 条，验收 §9 C1）。
+    /// 上方 DISCOEQPNO 同步挂接位于同一位置，但它在失败时会把 key 改成 "error"——
+    /// 记录写入不得沿用该写法。
+    /// </summary>
+    private void LogMhLoadAvailableWire(FlowNode node, IDictionary<string, object?> parameters, List<Finding> findings)
+    {
+        if (_svc.OperationLog is not { } sink) return;
+
+        // 格位号复用 checkAvailableSlot 已有的查询结果（app.slot.find_available 已返回 slot_no），
+        // 不新增查询（验收 §9 C6：不得为记录功能新增 MES / 库调用）。
+        var slot = Context!.NodeResults.TryGetValue("checkAvailableSlot", out var s) ? s : null;
+
+        var write = sink.TryWrite(new OperationLogEntry
+        {
+            ActionType = MhLoadActionType,
+            FlowId = Flow!.FlowId,
+            NodeId = node.Id,
+            OperatorRole = "MH",
+            SlotNo = slot?.GetValueOrDefault("slot_no")?.ToString(),
+            LotNo = ParamText(parameters, "wire_lot_no"),
+            WireSpec = ParamText(parameters, "wire_spec"),
+            Qty = ParamNumber(parameters, "qty"),
+            Result = "成功",
+            Message = "存料完成",
+            MesResult = "ok",
+            LockResult = "ok",
+        });
+
+        if (!write.Success)
+            findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次存料，已转待补偿）：{write.Error}"));
+    }
+
+    private static string? ParamText(IDictionary<string, object?> parameters, string name) =>
+        parameters.TryGetValue(name, out var v) ? v?.ToString() : null;
+
+    private static double? ParamNumber(IDictionary<string, object?> parameters, string name) =>
+        parameters.TryGetValue(name, out var v)
+        && double.TryParse(v?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
 
     // ---------- 判定 ----------
 

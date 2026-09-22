@@ -118,7 +118,8 @@ public sealed class AppBootstrap : IDisposable
             Slot = FlowSlots,
             SystemAgvNo = config["AgvDispatch:DefaultDeviceKey"] ?? "AGV-01",
             SystemMesWriter = MesOptions.MatTransWriter,
-            DiscoSync = DiscoSync
+            DiscoSync = DiscoSync,
+            OperationLog = OperationLog
         };
 
         Flows = FlowLoader.LoadAll();

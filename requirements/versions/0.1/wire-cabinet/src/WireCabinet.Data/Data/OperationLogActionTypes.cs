@@ -23,6 +23,12 @@ public static class OperationLogActionTypes
     /// <summary>维护人员试开（第 7 项，留痕）。</summary>
     public const string MaintTrialOpen = "maint_trial_open";
 
+    /// <summary>
+    /// 开门即清空（第 11 项）：格口无内部传感器，MH 开门关门后按账面无料处理。
+    /// 单独成类型而不是给开门记录补标记——记录只增不改，开门时还不知道会不会被清空。
+    /// </summary>
+    public const string MhAssumeEmpty = "mh_assume_empty";
+
     /// <summary>查看记录页本身也留痕（§3.7）。</summary>
     public const string ViewLog = "view_operation_log";
 
@@ -41,6 +47,7 @@ public static class OperationLogActionTypes
         (MhOpenSlot, "MH 打开单个格口"),
         (MhOpenSlotsBatch, "MH 批量打开格口"),
         (MaintTrialOpen, "维护试开格口"),
+        (MhAssumeEmpty, "开门即清空"),
         (ViewLog, "查看存取记录"),
         (ExportLog, "导出存取记录"),
     ];

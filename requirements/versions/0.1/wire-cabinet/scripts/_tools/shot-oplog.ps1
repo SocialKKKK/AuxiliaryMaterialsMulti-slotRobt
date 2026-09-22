@@ -17,6 +17,7 @@ public class W32 {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, IntPtr e);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
     public struct RECT { public int Left, Top, Right, Bottom; }
 }
 '@
@@ -77,9 +78,12 @@ $w = $r.Right - $r.Left
 $ht = $r.Bottom - $r.Top
 Write-Output ("window rect: " + $r.Left + "," + $r.Top + " " + ${w} + "x" + ${ht})
 
+# PrintWindow (PW_RENDERFULLCONTENT) 让窗口把自身渲染到位图，而不是按屏幕坐标拷贝。
+# 后者在窗口未置顶时会抓到该位置上的**别的窗口**（包括用户桌面内容），所以不用。
 $bmp = New-Object System.Drawing.Bitmap($w, $ht)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.Left, $r.Top, 0, 0, $bmp.Size)
+$hdc = $g.GetHdc()
+try { [void][W32]::PrintWindow($h, $hdc, 2) } finally { $g.ReleaseHdc($hdc) }
 $path = Join-Path (Get-Location) $Out
 $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
 $g.Dispose()

@@ -107,6 +107,12 @@ public partial class App : Application
             }
             else
                 MhDoors.TryAutoEndDoorOnlySession();
+
+            // 计划外开门（0.2 § 矩阵第 10 项）：库内没有开门指令，而 DI 读到释锁。
+            // 只返回本轮新出现的——持续释锁由 DoorStateReconciler 内部去重，
+            // 否则 2 秒一轮会把同一把卡住的锁刷成记录洪水。
+            foreach (var (_, slotNo) in await doorReconciler.FindUncommandedAsync(snapshots))
+                MhDoors.RecordUncommandedOpen(slotNo);
         });
 
         base.OnStartup(e);

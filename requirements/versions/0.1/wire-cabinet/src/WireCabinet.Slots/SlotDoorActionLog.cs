@@ -61,14 +61,55 @@ public sealed class SlotDoorActionLog
         return _sink.TryWrite(NewEntry(actionType, op, slotNo, "失败", "开门失败", error)).Success;
     }
 
+    /// <summary>
+    /// 无指令开门（§ 矩阵第 10 项）：库内没有开门指令，而锁 DI 显示释锁。
+    ///
+    /// 按 §3.1 设计说明「第 9、10 项并入对应的开门记录…不新增动作类型」，
+    /// 这里复用单格开门的类型并置 <c>is_uncommanded = 1</c>；
+    /// 既然是非计划开门，没有操作人，故只留空角色与说明文案。
+    /// </summary>
+    public bool RecordUncommandedOpen(string slotNo)
+    {
+        if (_sink is null) return false;
+
+        var entry = NewEntry(
+            MhOpenSlot, new DoorOperator(""), slotNo, "成功",
+            "库内无开门指令但锁 DI 显示释锁（计划外开门）", null, isUncommanded: true);
+
+        return _sink.TryWrite(entry).Success;
+    }
+
+    /// <summary>
+    /// 开门即清空（§ 矩阵第 11 项）：格口无内部传感器，MH 开门关门后按账面无料处理。
+    /// <c>is_cleared = 1</c>，并带上被清掉的焊丝批号（有的话）以便追溯。
+    /// </summary>
+    public bool RecordCleared(string slotNo, string? clearedLotNo, DoorOperator op)
+    {
+        if (_sink is null) return false;
+
+        var message = string.IsNullOrWhiteSpace(clearedLotNo)
+            ? $"格口 {slotNo} 按账面无料清空"
+            : $"格口 {slotNo} 按账面无料清空（原批号 {clearedLotNo}）";
+
+        var entry = NewEntry(
+            OperationLogActionTypes.MhAssumeEmpty, op, slotNo, "成功", message, null,
+            lotNo: clearedLotNo, isCleared: true);
+
+        return _sink.TryWrite(entry).Success;
+    }
+
     private static OperationLogEntry NewEntry(
-        string actionType, DoorOperator op, string? slotNo, string result, string message, string? error) => new()
+        string actionType, DoorOperator op, string? slotNo, string result, string message, string? error,
+        string? lotNo = null, bool isCleared = false, bool isUncommanded = false) => new()
     {
         ActionType = actionType,
         SlotNo = slotNo,
+        LotNo = lotNo,
         Result = result,
         Message = message,
         ErrorInfo = error,
+        IsCleared = isCleared,
+        IsUncommanded = isUncommanded,
         OperatorRole = op.Role,
         OperatorId = op.Id,
         OperatorName = op.Name,

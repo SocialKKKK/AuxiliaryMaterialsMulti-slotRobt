@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using WireCabinet.Slots;
 
 namespace WireCabinet.Hmi.Services;
@@ -107,7 +107,7 @@ public sealed class MhDoorOnlyService
         TryAutoEndDoorOnlySession();
     }
 
-    private Task AssumeEmptyAsync(long slotId, CancellationToken ct)
+    private async Task AssumeEmptyAsync(long slotId, CancellationToken ct)
     {
         string? clearLot = null;
         var invItem = _catalog.Find("app.slot.get_inventory");
@@ -122,14 +122,24 @@ public sealed class MhDoorOnlyService
 
         var item = _catalog.Find("app.slot.assume_empty");
         if (item is null)
-            return Task.CompletedTask;
+            return;
 
         var result = _appDb.Run(item, new Dictionary<string, object?> { ["slot_id"] = slotId });
-        if (!result.HasError && !string.IsNullOrEmpty(clearLot))
-            _discoSync?.TryClearFromCabinet(clearLot, WireCabinet.Data.WireMesDiscoFailureKind.Inline);
+        if (!result.HasError)
+        {
+            // 开门即清空留痕（§ 矩阵第 11 项）：格口无内部传感器，按账面无料处理
+            var dto = await _slots.GetSlotStatusAsync(slotId, ct);
+            _doorLog.RecordCleared(dto?.SlotNo ?? slotId.ToString(), clearLot, CurrentOperator);
 
-        return Task.CompletedTask;
+            if (!string.IsNullOrEmpty(clearLot))
+                _discoSync?.TryClearFromCabinet(clearLot, WireCabinet.Data.WireMesDiscoFailureKind.Inline);
+        }
     }
+
+    /// <summary>
+    /// 无指令开门记录（§ 矩阵第 10 项）。由门态巡检发现「库内无开门指令而 DI 显示释锁」后调用。
+    /// </summary>
+    public bool RecordUncommandedOpen(string slotNo) => _doorLog.RecordUncommandedOpen(slotNo);
 
     /// <summary>本会话打开格口均已关库后自动结束 mh_door_only 会话。</summary>
     public bool TryAutoEndDoorOnlySession()

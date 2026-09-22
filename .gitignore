@@ -54,7 +54,8 @@ packages/
 # data/app.db：运行时 SQLite 应用库，跑一次程序就会被修改（且会写入 MES-DISCO 待重试状态）
 appsettings.Local.json
 io-modules.yaml
-requirements/versions/0.1/wire-cabinet/data/app.db
+# WAL 模式会额外产生 -wal / -shm 两个附属文件，同样不能入库
+requirements/versions/0.1/wire-cabinet/data/app.db*
 
 # 其它常见临时文件
 *.tmp

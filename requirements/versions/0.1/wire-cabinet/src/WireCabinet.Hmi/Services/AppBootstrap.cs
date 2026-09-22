@@ -53,6 +53,10 @@ public sealed class AppBootstrap : IDisposable
 
         WireMesDiscoSchema.EnsureAll(AppDb);
 
+        // WAL 是库文件的持久属性，对已存在的库必须显式设置一次（建库脚本只在首次建库时执行）。
+        // 库被硬件轮询、AGV 轮询与记录写入共用，不开 WAL 时争用会表现为界面卡顿而非报错。
+        AppDb.EnsureWal();
+
         // MES mock 表与演示数据。**必须在这里而不是建库脚本里**：Initialize 只在首次建库时执行，
         // 而已存在的 app.db（开发机上的常态）永远拿不到这些表，操作员流程在本机就跑不起来。
         WireMesMockSchema.Ensure(AppDb);

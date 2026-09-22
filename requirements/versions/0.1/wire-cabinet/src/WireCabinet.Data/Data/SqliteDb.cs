@@ -14,10 +14,46 @@ public sealed class SqliteDb
 
     public string DbPath { get; }
 
+    /// <summary>
+    /// 忙等待上限（秒）。库被其他写入者占用时，SQLite 会重试到这个上限再报 "database is locked"。
+    /// 不显式设置会用默认值，现场多个写入者（硬件轮询 2s、AGV 轮询 5s、MES 对账 2min）叠加时
+    /// 容易等到很晚才失败，表现为界面卡顿。
+    /// </summary>
+    public const int BusyTimeoutSeconds = 15;
+
     public SqliteDb(string dbPath)
     {
         DbPath = dbPath;
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            DefaultTimeout = BusyTimeoutSeconds,
+        }.ToString();
+    }
+
+    /// <summary>
+    /// 开启 WAL（写前日志）。WAL 是**库文件的持久属性**，设一次即可，但对**已存在的库**必须显式设置——
+    /// 所以放在每次启动的迁移链里，而不是建库脚本里（建库脚本只在首次建库时执行）。
+    ///
+    /// 为什么需要：默认的 rollback journal 模式下读会阻塞写、写会阻塞读，
+    /// 而本库同时被硬件轮询、AGV 轮询与记录写入共用，争用会表现为界面卡顿而非报错。
+    /// WAL 下读写不互斥，显著降低争用。返回设置后的实际模式，便于断言。
+    /// </summary>
+    public string EnsureWal()
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode=WAL;";
+        return cmd.ExecuteScalar()?.ToString() ?? "";
+    }
+
+    /// <summary>当前日志模式，供自检与测试使用。</summary>
+    public string JournalMode()
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode;";
+        return cmd.ExecuteScalar()?.ToString() ?? "";
     }
 
     /// <summary>初始化数据库：建库 + 灌种子。recreate=true 时删除旧文件重建。</summary>

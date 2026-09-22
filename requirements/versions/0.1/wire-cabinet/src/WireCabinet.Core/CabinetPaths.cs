@@ -30,6 +30,9 @@ public static class CabinetPaths
     public static string CreateMaterialsScript => Path.Combine(ScriptsDir, "create-welding_wire_materials.sqlite.sql");
     public static string SeedMaterialsScript => Path.Combine(ScriptsDir, "seed-welding_wire_materials.sqlite.sql");
 
+    /// <summary>MES mock（SQLite）表与演示数据；本机离线模式下 MES 只读查询打在这些表上。</summary>
+    public static string MesMockScript => Path.Combine(ScriptsDir, "mes-mock.sqlite.sql");
+
     public static string SlotConfigDir => Path.Combine(VersionRoot, "slot-config");
     public static string SlotIoMappingFile => Path.Combine(SlotConfigDir, "slot-io-mapping.generated.yaml");
     public static string IoModulesFile => Path.Combine(SlotConfigDir, "io-modules.yaml");

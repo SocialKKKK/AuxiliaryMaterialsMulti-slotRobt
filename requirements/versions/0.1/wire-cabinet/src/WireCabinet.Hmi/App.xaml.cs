@@ -82,7 +82,8 @@ public partial class App : Application
             Bootstrap.WireSession,
             Bootstrap.AppDbGateway,
             Bootstrap.Catalog,
-            Bootstrap.DiscoSync);
+            Bootstrap.DiscoSync,
+            Bootstrap.OperationLog);
 
         MesDiscoRetry = new WireMesDiscoRetryTimer(
             Bootstrap.DiscoSync,

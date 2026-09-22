@@ -14,6 +14,15 @@ public static class OperationLogActionTypes
     public const string OpIssueAvailableWire = "op_issue_available_wire";
     public const string OpTakeWire = "op_take_wire";
 
+    /// <summary>MH 打开单个格口（§3 矩阵第 5 项）。</summary>
+    public const string MhOpenSlot = "mh_open_slot";
+
+    /// <summary>MH 批量打开格口（第 6 项）：**每个被打开的格口各记一条**。</summary>
+    public const string MhOpenSlotsBatch = "mh_open_slots_batch";
+
+    /// <summary>维护人员试开（第 7 项，留痕）。</summary>
+    public const string MaintTrialOpen = "maint_trial_open";
+
     /// <summary>查看记录页本身也留痕（§3.7）。</summary>
     public const string ViewLog = "view_operation_log";
 
@@ -29,6 +38,9 @@ public static class OperationLogActionTypes
         (OpReturnWire, "OP 归还旧焊丝"),
         (OpIssueAvailableWire, "OP 领用新焊丝"),
         (OpTakeWire, "OP 取出焊丝"),
+        (MhOpenSlot, "MH 打开单个格口"),
+        (MhOpenSlotsBatch, "MH 批量打开格口"),
+        (MaintTrialOpen, "维护试开格口"),
         (ViewLog, "查看存取记录"),
         (ExportLog, "导出存取记录"),
     ];

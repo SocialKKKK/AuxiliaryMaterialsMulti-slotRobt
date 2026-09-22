@@ -711,6 +711,11 @@ public partial class MhView : UserControl
 
     private async Task RunDoorActionAsync(Button trigger, Func<Task<(bool Ok, string Message)>> action)
     {
+        // 开门记录的操作人取自本页的操作人输入（0.2 §3.3）。放在这里是因为四个开门按钮
+        // 都经此入口，集中设一次即可；没填工号就只记角色。
+        App.MhDoors.CurrentOperator =
+            WireCabinet.Slots.DoorOperator.Mh(OperatorIdBox.Text, _operatorName, OperatorTeamBox.Text);
+
         if (App.DoorOps.IsBusy)
         {
             MessageBox.Show(

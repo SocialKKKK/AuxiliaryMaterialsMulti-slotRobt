@@ -29,14 +29,24 @@ public sealed class MhDoorOnlyService
         IWireOperationSession session,
         WireCabinet.Data.IAppDb appDb,
         WireCabinet.Data.SqlCatalog catalog,
-        WireCabinet.Data.IWireDiscoEqpSync? discoSync = null)
+        WireCabinet.Data.IWireDiscoEqpSync? discoSync = null,
+        WireCabinet.Data.IOperationLogSink? operationLog = null)
     {
         _slots = slots;
         _session = session;
         _appDb = appDb;
         _catalog = catalog;
         _discoSync = discoSync;
+        _doorLog = new SlotDoorActionLog(operationLog);
     }
+
+    private readonly SlotDoorActionLog _doorLog;
+
+    /// <summary>
+    /// 当前操作人（0.2 §3.3）。由界面在调用前设置——MH 界面收工号/班组，维护界面没有工号故只记角色。
+    /// 未设置时按 MH 记（界面的默认角色）。
+    /// </summary>
+    public DoorOperator CurrentOperator { get; set; } = DoorOperator.Mh();
 
     public bool HasActiveSession => _session.HasActiveSession;
 
@@ -200,6 +210,12 @@ public sealed class MhDoorOnlyService
             OperationLabel = $"试开格口 {dto.SlotNo}"
         }, ct);
 
+        // 试开也要留痕（§ 矩阵第 7 项）。维护界面没有工号输入，故只记角色。
+        if (result.Success)
+            _doorLog.RecordOpened(SlotDoorActionLog.MaintTrialOpen, [(result.SlotId, result.SlotNo)], DoorOperator.Maint());
+        else
+            _doorLog.RecordFailed(SlotDoorActionLog.MaintTrialOpen, dto.SlotNo, result.Message, DoorOperator.Maint());
+
         return result.Success
             ? (true, $"试开 {result.SlotNo} 成功（仅门/锁）。")
             : (false, result.Message);
@@ -232,6 +248,13 @@ public sealed class MhDoorOnlyService
         {
             TrackOpenedSlot(result.SlotId);
             NotifySlotStateChanged();
+            // 单格开门一条（§ 矩阵第 5 项）；记录失败不影响开门
+            _doorLog.RecordOpened(SlotDoorActionLog.MhOpenSlot, [(result.SlotId, result.SlotNo)], CurrentOperator);
+        }
+        else
+        {
+            // 开锁失败也留一条（§ 矩阵第 9 项）
+            _doorLog.RecordFailed(SlotDoorActionLog.MhOpenSlot, dto.SlotNo, result.Message, CurrentOperator);
         }
 
         return result.Success
@@ -290,6 +313,12 @@ public sealed class MhDoorOnlyService
         foreach (var r in batch.Results.Where(r => r.Success))
             TrackOpenedSlot(r.SlotId);
 
+        // 批量开门**按被打开的格口逐个计条**（§ 矩阵第 6 项：条数与实际开门数一致）
+        _doorLog.RecordOpened(
+            SlotDoorActionLog.MhOpenSlotsBatch,
+            batch.Results.Where(r => r.Success).Select(r => (r.SlotId, r.SlotNo)).ToList(),
+            CurrentOperator);
+
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)
             return (false, $"批量开门中止：{failed.Message}（已成功 {opened}/{codes.Count}）");
@@ -337,6 +366,12 @@ public sealed class MhDoorOnlyService
             ct);
 
         var opened = batch.Results.Count(r => r.Success);
+        // 维护批量试开同样按格口逐个留痕（§ 矩阵第 7 项）
+        _doorLog.RecordOpened(
+            SlotDoorActionLog.MaintTrialOpen,
+            batch.Results.Where(r => r.Success).Select(r => (r.SlotId, r.SlotNo)).ToList(),
+            DoorOperator.Maint());
+
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)
             return (false, $"批量开门中止：{failed.Message}（已成功 {opened}/{codes.Count}）");

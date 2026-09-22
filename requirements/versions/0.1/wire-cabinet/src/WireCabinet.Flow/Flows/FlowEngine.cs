@@ -122,6 +122,12 @@ public sealed class FlowEngine
         }
         ctx.NodeResults[node.Id] = row;
 
+        // 关门确认：§3.3 把 door_close_ts 定义为「关门确认时刻」。操作员流程的关门是用户确认
+        // （closeReturnSlotDoor / closeIssueSlotDoor 是 user_input，不是 slot_close 节点），
+        // 所以按节点声明的 closed 输出识别，而不是靠节点名。
+        if (node.Outputs.Any(o => string.Equals(o.Name, DoorClosedOutput, StringComparison.OrdinalIgnoreCase)))
+            ctx.Runtime[DoorCloseTsKey] = NowIso();
+
         var (next, findings) = Route(node, "success");
         return Build(node, "success", next, "用户输入", sb.ToString(), findings);
     }
@@ -287,11 +293,10 @@ public sealed class FlowEngine
             }
         }
 
-        // 存取记录（0.2）挂接点：MH 存料的成功与失败都在这里落一条
-        // （§3 覆盖矩阵第 1、9 项：失败不单独成动作类型，而是同一动作的 result=失败）。
-        // 放在 DISCOEQPNO 同步之后，这样 MES 同步失败也会以 result=失败 被记下来。
-        if (string.Equals(node.SqlId, "app.slot.bind_wire", StringComparison.OrdinalIgnoreCase))
-            LogMhLoadAvailableWire(node, parameters, key, findings, result);
+        // 存取记录（0.2）挂接点（§3 覆盖矩阵第 1–4、9 项：MH 存料 / 操作员归还 / 领用 / 取出）。
+        // 放在 DISCOEQPNO 同步之后，这样 MES 同步失败也会以 result=失败 被记下来；
+        // 失败不单独成动作类型，仍是同一动作的一条记录。
+        LogFlowAction(node, parameters, key, findings, result);
         var (next, routeFindings) = Route(node, key);
         findings.AddRange(routeFindings);
 
@@ -333,6 +338,8 @@ public sealed class FlowEngine
 
             if (ok)
                 Context!.NodeResults[node.Id] = new(StringComparer.OrdinalIgnoreCase) { ["opened_slot_id"] = slotId };
+            if (ok)
+                Context!.Runtime[DoorOpenTsKey] = NowIso();
         }
         else
         {
@@ -447,7 +454,7 @@ public sealed class FlowEngine
         // 不新增查询（验收 §9 C6：不得为记录功能新增 MES / 库调用）。
         var slot = Context!.NodeResults.TryGetValue("checkAvailableSlot", out var s) ? s : null;
 
-        var write = sink.TryWrite(new OperationLogEntry
+        WriteEntry(sink, node, findings, "存料", new OperationLogEntry
         {
             ActionType = MhLoadActionType,
             FlowId = Flow!.FlowId,
@@ -464,10 +471,145 @@ public sealed class FlowEngine
             // 能走到 updateDB 说明格口已经开过并关过，两种结果下都成立
             LockResult = "ok",
         });
-
-        if (!write.Success)
-            findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次存料，已转待补偿）：{write.Error}"));
     }
+
+    // ---------- 存取记录：操作员流程（0.2 需求范围 §3.1 第 2/3/4 项） ----------
+
+    public const string OpReturnActionType = "op_return_wire";
+    public const string OpIssueActionType = "op_issue_available_wire";
+    public const string OpTakeActionType = "op_take_wire";
+
+    private const string MhBindWireSqlId = "app.slot.bind_wire";
+
+    /// <summary>取出格口库存（关门后）——取出记录的落点，§3.1 第 4 项要求单独成条。</summary>
+    private const string TakePickupSqlId = "app.slot.complete_issue_pickup";
+
+    private const string DoorOpenTsKey = "door_open_ts";
+    private const string DoorCloseTsKey = "door_close_ts";
+    private const string DoorClosedOutput = "closed";
+
+    /// <summary>
+    /// 提交类动作按**节点 id** 识别：归还与领用两个节点共用 mes.mat_trans.submit_return，
+    /// 按 sql_id 分不开。
+    /// </summary>
+    private static readonly Dictionary<string, string> OpActionByNodeId = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["submitWireReturn"] = OpReturnActionType,
+        ["submitWireIssue"] = OpIssueActionType,
+    };
+
+    /// <summary>本节点是否对应一个需要记录的存取动作；是则写一条（成功与失败都写）。</summary>
+    private void LogFlowAction(
+        FlowNode node, IDictionary<string, object?> parameters, string key, List<Finding> findings, DbResult result)
+    {
+        if (_svc.OperationLog is null) return;
+
+        if (string.Equals(node.SqlId, MhBindWireSqlId, StringComparison.OrdinalIgnoreCase))
+            LogMhLoadAvailableWire(node, parameters, key, findings, result);
+        else if (OpActionByNodeId.TryGetValue(node.Id, out var opAction))
+            LogOperatorSubmit(node, opAction, key, findings, result);
+        else if (string.Equals(node.SqlId, TakePickupSqlId, StringComparison.OrdinalIgnoreCase))
+            LogOperatorTake(node, key, findings, result);
+    }
+
+    /// <summary>归还（§3.1 第 2 项）/ 领用（第 3 项）提交成功后的记录；失败同样记一条。</summary>
+    private void LogOperatorSubmit(FlowNode node, string actionType, string key, List<Finding> findings, DbResult result)
+    {
+        if (_svc.OperationLog is not { } sink) return;
+
+        var success = string.Equals(key, "success", StringComparison.Ordinal);
+        var isReturn = string.Equals(actionType, OpReturnActionType, StringComparison.Ordinal);
+
+        WriteEntry(sink, node, findings, "操作", new OperationLogEntry
+        {
+            ActionType = actionType,
+            FlowId = Flow!.FlowId,
+            NodeId = node.Id,
+            OperatorRole = "OP",
+            OperatorId = Field("inputOperatorWorkInfo", "operator_id"),
+            OperatorTeam = Field("inputOperatorWorkInfo", "work_group"),
+            OperatorName = Field("queryOPById", "operator_name"),
+            EqpNo = Field("inputEqpNo", "eqp_no"),
+            SlotNo = isReturn
+                ? Field("findReturnSlot", "return_slot_no")
+                : Field("queryMatchedAvailableWire", "slot_no"),
+            LotNo = isReturn
+                ? Field("inputReturnedWireLotNo", "returned_wire_lot_no")
+                : Field("queryMatchedAvailableWire", "matched_available_wire_lot_no"),
+            WireSpec = isReturn
+                ? Field("queryWireSpecByLotNo", "spec")
+                : Field("queryWireByLotNo", "spec"),
+            ProductLotNo = isReturn
+                ? Field("queryLastProductLotNo", "lot")
+                : Field("inputIssueProductLotNo", "issue_product_lot_no"),
+            Qty = isReturn
+                ? NumField("queryWireReturnedWeightBySpec", "return_weight")
+                : NumField("queryWireByLotNo", "qty"),
+            RemainQty = isReturn ? NumField("inputRemainingQty", "remaining_qty") : null,
+            Result = success ? "成功" : "失败",
+            Message = success ? (isReturn ? "归还提交完成" : "领用提交完成") : "提交失败",
+            ErrorInfo = success ? null : result.Error,
+            MesResult = success ? "ok" : result.Error,
+        });
+    }
+
+    /// <summary>
+    /// 取出焊丝（§3.1 第 4 项）：关门后单独一条，含该格的开门 / 关门确认时刻。
+    /// 关门在操作员流程里是用户确认，故 door_close_ts 取确认时刻（§3.3 的定义）。
+    /// </summary>
+    private void LogOperatorTake(FlowNode node, string key, List<Finding> findings, DbResult result)
+    {
+        if (_svc.OperationLog is not { } sink) return;
+
+        var success = string.Equals(key, "success", StringComparison.Ordinal);
+
+        WriteEntry(sink, node, findings, "取出", new OperationLogEntry
+        {
+            ActionType = OpTakeActionType,
+            FlowId = Flow!.FlowId,
+            NodeId = node.Id,
+            OperatorRole = "OP",
+            OperatorId = Field("inputOperatorWorkInfo", "operator_id"),
+            OperatorTeam = Field("inputOperatorWorkInfo", "work_group"),
+            OperatorName = Field("queryOPById", "operator_name"),
+            EqpNo = Field("inputEqpNo", "eqp_no"),
+            SlotNo = Field("queryMatchedAvailableWire", "slot_no"),
+            LotNo = Field("queryMatchedAvailableWire", "matched_available_wire_lot_no"),
+            WireSpec = Field("queryMatchedAvailableWire", "wire_spec"),
+            ProductLotNo = Field("inputIssueProductLotNo", "issue_product_lot_no"),
+            DoorOpenTs = RuntimeValue(DoorOpenTsKey),
+            DoorCloseTs = RuntimeValue(DoorCloseTsKey),
+            Result = success ? "成功" : "失败",
+            Message = success ? "取出完成" : "取出失败",
+            ErrorInfo = success ? null : result.Error,
+        });
+    }
+
+    /// <summary>
+    /// 写一条记录。**契约**：写入失败只追加一条告警，绝不改变本节点的 outcome / 路由
+    /// （0.2 需求范围 §1.4 第 1 条，验收 §9 C1）。
+    /// </summary>
+    private void WriteEntry(IOperationLogSink sink, FlowNode node, List<Finding> findings, string what, OperationLogEntry entry)
+    {
+        var write = sink.TryWrite(entry);
+        if (!write.Success)
+            findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次{what}，已转待补偿）：{write.Error}"));
+    }
+
+    /// <summary>取某节点结果里的字段（节点未执行或字段缺失时为 null）。</summary>
+    private string? Field(string nodeId, string field) =>
+        Context!.NodeResults.TryGetValue(nodeId, out var row) ? row.GetValueOrDefault(field)?.ToString() : null;
+
+    private double? NumField(string nodeId, string field) =>
+        double.TryParse(Field(nodeId, field), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+
+    private string? RuntimeValue(string key) =>
+        Context!.Runtime.TryGetValue(key, out var value) ? value : null;
+
+    private static string NowIso() =>
+        DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
     private static string? ParamText(IDictionary<string, object?> parameters, string name) =>
         parameters.TryGetValue(name, out var v) ? v?.ToString() : null;

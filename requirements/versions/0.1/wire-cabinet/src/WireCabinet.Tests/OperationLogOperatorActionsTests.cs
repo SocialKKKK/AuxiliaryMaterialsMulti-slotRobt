@@ -27,6 +27,7 @@ public class OperationLogOperatorActionsTests : IDisposable
         var db = new SqliteDb(_dbPath);
         db.Initialize(recreate: true);
         WireMesDiscoSchema.EnsureAll(db);
+        WireMesMockSchema.Ensure(db);
         OperationLogSchema.Ensure(db);
 
         var catalog = SqlCatalog.Load();

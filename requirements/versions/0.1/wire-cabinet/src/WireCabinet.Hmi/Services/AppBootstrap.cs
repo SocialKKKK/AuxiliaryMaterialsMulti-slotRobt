@@ -53,6 +53,10 @@ public sealed class AppBootstrap : IDisposable
 
         WireMesDiscoSchema.EnsureAll(AppDb);
 
+        // MES mock 表与演示数据。**必须在这里而不是建库脚本里**：Initialize 只在首次建库时执行，
+        // 而已存在的 app.db（开发机上的常态）永远拿不到这些表，操作员流程在本机就跑不起来。
+        WireMesMockSchema.Ensure(AppDb);
+
         // 物料存取记录（0.2）：schema 脚本用的是 CREATE TABLE IF NOT EXISTS，
         // 对已存在的库不会加列，必须在这里幂等补列，否则现场老库会 no such column。
         OperationLogSchema.Ensure(AppDb);

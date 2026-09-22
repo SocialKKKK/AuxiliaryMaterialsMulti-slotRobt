@@ -39,9 +39,6 @@ public sealed class SqliteDb
             ExecScript(conn, File.ReadAllText(CabinetPaths.SeedMaterialsScript));
         if (File.Exists(CabinetPaths.SeedSlotScript))
             ExecScript(conn, File.ReadAllText(CabinetPaths.SeedSlotScript));
-        // MES mock 表与演示数据：本机离线模式跑流程的前提（无此脚本操作员流程无法执行）
-        if (File.Exists(CabinetPaths.MesMockScript))
-            ExecScript(conn, File.ReadAllText(CabinetPaths.MesMockScript));
     }
 
     public SqliteConnection Open()

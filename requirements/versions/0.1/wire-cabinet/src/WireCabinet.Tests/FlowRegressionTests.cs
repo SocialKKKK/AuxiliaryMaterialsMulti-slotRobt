@@ -37,6 +37,7 @@ public class FlowRegressionTests : IDisposable
         var db = new SqliteDb(_dbPath);
         db.Initialize(recreate: true);
         WireMesDiscoSchema.EnsureAll(db);
+        WireMesMockSchema.Ensure(db);
         OperationLogSchema.Ensure(db);
 
         var services = new EngineServices

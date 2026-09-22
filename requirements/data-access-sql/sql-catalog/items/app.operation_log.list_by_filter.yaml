@@ -1,0 +1,74 @@
+id: app.operation_log.list_by_filter
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: >-
+  物料存取记录列表：六项条件**各自可选、可任意组合**（时间范围 / 物料批号 / 格口编号 /
+  操作人 / 机台号 / 动作类型），默认按时间倒序，分页取用。
+  未传的条件写 NULL 即忽略该条件——这样动态 WHERE 不必拼 SQL，与 app.slot.list_by_filter 同法。
+  ts 与写入时同为 UTC 的 'YYYY-MM-DD HH:MM:SS'，故时间范围可直接按字符串比较。
+sql: |
+  SELECT id, ts, operator_id, operator_name, operator_team, operator_role, action_type,
+         slot_no, lot_no, wire_spec, eqp_no, product_lot_no,
+         qty, remain_qty, station, result, message,
+         mes_result, lock_result, error_info,
+         door_open_ts, door_close_ts, is_cleared, is_uncommanded,
+         flow_id, node_id
+  FROM app_operation_log
+  WHERE (:ts_from     IS NULL OR ts          >= :ts_from)
+    AND (:ts_to       IS NULL OR ts          <= :ts_to)
+    AND (:lot_no      IS NULL OR lot_no       = :lot_no)
+    AND (:slot_no     IS NULL OR slot_no      = :slot_no)
+    AND (:operator_id IS NULL OR operator_id  = :operator_id)
+    AND (:eqp_no      IS NULL OR eqp_no       = :eqp_no)
+    AND (:action_type IS NULL OR action_type  = :action_type)
+  ORDER BY ts DESC, id DESC
+  LIMIT :page_size OFFSET :offset;
+params:
+  - name: ts_from
+    note: 起始时间（含），NULL 表示不限。
+  - name: ts_to
+    note: 结束时间（含），NULL 表示不限。
+  - name: lot_no
+    note: 物料批号，NULL 表示不限。
+  - name: slot_no
+    note: 格口编号，NULL 表示不限。
+  - name: operator_id
+    note: 操作人工号，NULL 表示不限。
+  - name: eqp_no
+    note: 机台号，NULL 表示不限。
+  - name: action_type
+    note: 动作类型，NULL 表示不限。
+  - name: page_size
+    note: 每页条数（0.2 需求范围 §3.4 定为 20）。
+  - name: offset
+    note: 偏移量，(页码-1)*每页条数。
+outputs:
+  - id
+  - ts
+  - operator_id
+  - operator_name
+  - operator_team
+  - operator_role
+  - action_type
+  - slot_no
+  - lot_no
+  - wire_spec
+  - eqp_no
+  - product_lot_no
+  - qty
+  - remain_qty
+  - station
+  - result
+  - message
+  - mes_result
+  - lock_result
+  - error_info
+  - door_open_ts
+  - door_close_ts
+  - is_cleared
+  - is_uncommanded
+  - flow_id
+  - node_id
+result_cardinality: 0..n
+note: 读取类条目，只增不删的记录表上使用，无副作用。

@@ -1,0 +1,49 @@
+id: app.operation_log.timeline_by_lot
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: >-
+  按物料批号追溯该卷焊丝的全程时间线：入库 → 在柜 → 归还 → 被取走（0.2 需求范围 §3.6）。
+  不设条数上限，按时间正序返回，便于直接读成一条链。
+  与列表口径的区别：列表默认时间倒序、分页；追溯要的是完整且按时间向前推进。
+sql: |
+  SELECT id, ts, operator_id, operator_name, operator_team, operator_role, action_type,
+         slot_no, lot_no, wire_spec, eqp_no, product_lot_no,
+         qty, remain_qty, station, result, message,
+         mes_result, lock_result, error_info,
+         door_open_ts, door_close_ts, is_cleared, is_uncommanded,
+         flow_id, node_id
+  FROM app_operation_log
+  WHERE lot_no = :lot_no
+  ORDER BY ts, id;
+params:
+  - name: lot_no
+    note: 物料批号。批号在记录中不存在时返回 0 行（界面按「无该批号记录」提示）。
+outputs:
+  - id
+  - ts
+  - operator_id
+  - operator_name
+  - operator_team
+  - operator_role
+  - action_type
+  - slot_no
+  - lot_no
+  - wire_spec
+  - eqp_no
+  - product_lot_no
+  - qty
+  - remain_qty
+  - station
+  - result
+  - message
+  - mes_result
+  - lock_result
+  - error_info
+  - door_open_ts
+  - door_close_ts
+  - is_cleared
+  - is_uncommanded
+  - flow_id
+  - node_id
+result_cardinality: 0..n

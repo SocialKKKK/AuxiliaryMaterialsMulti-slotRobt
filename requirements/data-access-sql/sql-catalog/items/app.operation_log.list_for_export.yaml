@@ -1,0 +1,68 @@
+id: app.operation_log.list_for_export
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: >-
+  按当前筛选条件取导出数据（0.2 需求范围 §3.5：导出范围与当前筛选一致）。
+  与 app.operation_log.list_by_filter 是同一套条件，但**不分页**——导出的是整个筛选结果。
+  两者条件必须保持一致，否则界面看到的与导出的会对不上。
+sql: |
+  SELECT id, ts, operator_id, operator_name, operator_team, operator_role, action_type,
+         slot_no, lot_no, wire_spec, eqp_no, product_lot_no,
+         qty, remain_qty, station, result, message,
+         mes_result, lock_result, error_info,
+         door_open_ts, door_close_ts, is_cleared, is_uncommanded,
+         flow_id, node_id
+  FROM app_operation_log
+  WHERE (:ts_from     IS NULL OR ts          >= :ts_from)
+    AND (:ts_to       IS NULL OR ts          <= :ts_to)
+    AND (:lot_no      IS NULL OR lot_no       = :lot_no)
+    AND (:slot_no     IS NULL OR slot_no      = :slot_no)
+    AND (:operator_id IS NULL OR operator_id  = :operator_id)
+    AND (:eqp_no      IS NULL OR eqp_no       = :eqp_no)
+    AND (:action_type IS NULL OR action_type  = :action_type)
+  ORDER BY ts DESC, id DESC;
+params:
+  - name: ts_from
+    note: 起始时间（含），NULL 表示不限。
+  - name: ts_to
+    note: 结束时间（含），NULL 表示不限。
+  - name: lot_no
+    note: 物料批号，NULL 表示不限。
+  - name: slot_no
+    note: 格口编号，NULL 表示不限。
+  - name: operator_id
+    note: 操作人工号，NULL 表示不限。
+  - name: eqp_no
+    note: 机台号，NULL 表示不限。
+  - name: action_type
+    note: 动作类型，NULL 表示不限。
+outputs:
+  - id
+  - ts
+  - operator_id
+  - operator_name
+  - operator_team
+  - operator_role
+  - action_type
+  - slot_no
+  - lot_no
+  - wire_spec
+  - eqp_no
+  - product_lot_no
+  - qty
+  - remain_qty
+  - station
+  - result
+  - message
+  - mes_result
+  - lock_result
+  - error_info
+  - door_open_ts
+  - door_close_ts
+  - is_cleared
+  - is_uncommanded
+  - flow_id
+  - node_id
+result_cardinality: 0..n
+note: 导出行为本身也要留痕（写入一条 action_type 区分查看/导出的记录），由调用方负责。

@@ -30,3 +30,9 @@ sql_items_index:
     path: items/app.returned_weight.get_by_spec.yaml
   - id: app.operation_log.insert
     path: items/app.operation_log.insert.yaml
+  - id: app.operation_log.list_by_filter
+    path: items/app.operation_log.list_by_filter.yaml
+  - id: app.operation_log.list_for_export
+    path: items/app.operation_log.list_for_export.yaml
+  - id: app.operation_log.timeline_by_lot
+    path: items/app.operation_log.timeline_by_lot.yaml

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using WireCabinet.Core;
 using WireCabinet.Core.Config;
 using Xunit;
@@ -43,8 +43,20 @@ public class MesModeSelectionTests
     [Fact]
     public void LocalSettings_BlankTheConnectionString_SoThisMachineUsesMockMes()
     {
+        var localFile = Path.Combine(CabinetPaths.VersionRoot, "src", "WireCabinet.Hmi", "appsettings.Local.json");
         var config = BuildConfig();
         var effective = config["Mes:ConnectionString"];
+
+        // appsettings.Local.json 是本机文件（已 gitignore），且按 optional 加载——
+        // 新克隆的机器与**现场机器上它不存在**。那时「本机走 mock」这场景不适用，
+        // 读到共享配置里的现场连接串才是预期；原实现一律断言为空，会在这些机器上假失败。
+        if (!File.Exists(localFile))
+        {
+            Assert.False(
+                string.IsNullOrWhiteSpace(effective),
+                "没有本机配置时应读到共享配置里的现场连接串。");
+            return;
+        }
 
         Assert.True(
             string.IsNullOrWhiteSpace(effective),

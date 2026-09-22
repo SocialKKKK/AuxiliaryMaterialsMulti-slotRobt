@@ -32,7 +32,22 @@
                     <TextBlock Text="存放焊丝" Style="{StaticResource SectionTitle}"/>
                     <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,0,0,10"/>
 
-                    <TextBlock Text="焊丝批号（扫码 / 手动输入）" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+                    <TextBlock Text="操作人工号 / 班组" Style="{StaticResource LabelText}" Margin="0,0,0,4"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="OperatorIdBox" Grid.Column="0" Style="{StaticResource IndustrialTextBox}"
+                                 KeyDown="OperatorIdBox_KeyDown" LostFocus="OperatorIdBox_LostFocus"/>
+                        <TextBox x:Name="OperatorTeamBox" Grid.Column="1" Style="{StaticResource IndustrialTextBox}"
+                                 Width="72" Margin="8,0,0,0"/>
+                    </Grid>
+                    <!-- 姓名来自 MES 查询，仅作确认显示；查不到不影响存料 -->
+                    <TextBlock x:Name="OperatorNameText" Text="" Style="{StaticResource LabelText}"
+                               Foreground="{StaticResource SuccessBrush}" Margin="0,5,0,0" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="焊丝批号（扫码 / 手动输入）" Style="{StaticResource LabelText}" Margin="0,8,0,4"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using WireCabinet.Data;
 using WireCabinet.Flows;
 using WireCabinet.Hmi.Services;
 using WireCabinet.Slots;
@@ -146,6 +147,52 @@ public partial class MhView : UserControl
         ResetDepositUi(keepLotText: true);
     }
 
+    // ---------- 操作人（0.2 §3.3） ----------
+
+    private string? _operatorName;
+
+    private void OperatorIdBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        RefreshOperatorName();
+    }
+
+    private void OperatorIdBox_LostFocus(object sender, RoutedEventArgs e) => RefreshOperatorName();
+
+    /// <summary>
+    /// 按工号解析姓名并显示，供操作人确认输入正确。
+    /// **绝不阻断存料**（§1.4）：查不到、MES 不可达、catalog 缺条目都只是不显示姓名，
+    /// 记录里留空 operator_name，业务照常进行。
+    /// </summary>
+    private void RefreshOperatorName()
+    {
+        if (OperatorNameText is null) return;
+
+        var id = OperatorIdBox.Text.Trim();
+        _operatorName = TryResolveOperatorName(id);
+
+        if (string.IsNullOrEmpty(id))
+        {
+            OperatorNameText.Text = "";
+            return;
+        }
+
+        if (_operatorName is null)
+        {
+            OperatorNameText.Text = "未查到该工号（不影响存料，记录将不含姓名）";
+            OperatorNameText.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            return;
+        }
+
+        OperatorNameText.Text = $"操作人：{_operatorName}";
+        OperatorNameText.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
+    }
+
+    /// <summary>§3.3 指定的姓名来源是 mes.operator.get_by_id；解析与容错都在 Data 层的目录类里（可测）。</summary>
+    private string? TryResolveOperatorName(string operatorId) =>
+        new MesOperatorDirectory(App.Bootstrap.Catalog, App.Bootstrap.Mes).TryGetName(operatorId);
+
     private void WireLotBox_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter)
@@ -286,6 +333,11 @@ public partial class MhView : UserControl
             ShowFlowError(gateMsg);
             return;
         }
+
+        // 存料记录的操作人（0.2 §3.3）。MH 存料流程没有操作人输入节点、且 §1.3 不允许改流程定义，
+        // 所以由界面收工号/班组并经运行期上下文传给引擎。为空也不影响存料。
+        App.Flows.SetMhOperator(
+            OperatorIdBox.Text, _operatorName, OperatorTeamBox.Text);
 
         _depositInProgress = true;
         DepositActionBtn.IsEnabled = false;

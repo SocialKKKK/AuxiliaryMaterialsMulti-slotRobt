@@ -58,6 +58,43 @@ public sealed class FlowCoordinator
         _traceHub = traceHub;
     }
 
+    /// <summary>
+    /// 设置 MH 界面当前操作人（工号 / 姓名 / 班组），供存料记录使用。
+    ///
+    /// MH 存料流程没有操作人输入节点、且 §1.3 不允许改流程定义，所以改由界面把值写进
+    /// 流程运行期上下文，引擎挂接记录时读取（见 FlowEngine.OperatorIdKey）。
+    /// 三个值都可以为空：读不到就只记角色，绝不因此阻断存料。
+    /// </summary>
+    public void SetMhOperator(string? operatorId, string? operatorName, string? operatorTeam)
+    {
+        _mhOperatorId = operatorId;
+        _mhOperatorName = operatorName;
+        _mhOperatorTeam = operatorTeam;
+    }
+
+    private string? _mhOperatorId;
+    private string? _mhOperatorName;
+    private string? _mhOperatorTeam;
+
+    /// <summary>把当前操作人写进正在跑的流程上下文（每次开跑/换流程后都要重设）。</summary>
+    private void ApplyMhOperatorToRuntime()
+    {
+        if (_runner?.Engine.Context is not { } ctx) return;
+
+        ctx.Runtime[FlowEngine.OperatorRoleKey] = "MH";
+        SetOrRemove(ctx, FlowEngine.OperatorIdKey, _mhOperatorId);
+        SetOrRemove(ctx, FlowEngine.OperatorNameKey, _mhOperatorName);
+        SetOrRemove(ctx, FlowEngine.OperatorTeamKey, _mhOperatorTeam);
+    }
+
+    private static void SetOrRemove(FlowRunContext ctx, string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            ctx.Runtime.Remove(key);
+        else
+            ctx.Runtime[key] = value.Trim();
+    }
+
     public bool TryBeginFlow(string flowId, out string message)
     {
         if (!_app.WireSession.TryBegin(flowId, out message))
@@ -73,6 +110,7 @@ public sealed class FlowCoordinator
 
         _runner = new FlowSessionRunner(_app.EngineServices);
         _runner.Begin(_flow);
+        ApplyMhOperatorToRuntime();
         _publishedCount = 0;
         _sessionId = _traceHub?.BeginSession(_flow.FlowId, _flow.Title);
         _lastFailTerminalNodeId = null;

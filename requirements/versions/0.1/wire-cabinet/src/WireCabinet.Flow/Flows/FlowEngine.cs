@@ -459,7 +459,12 @@ public sealed class FlowEngine
             ActionType = MhLoadActionType,
             FlowId = Flow!.FlowId,
             NodeId = node.Id,
-            OperatorRole = "MH",
+            // 操作人由界面在开跑前经 Runtime 传入（MH 流程无操作人输入节点）；
+            // 没传就至少留下角色，不留空动作类型
+            OperatorRole = RuntimeValue(OperatorRoleKey) ?? "MH",
+            OperatorId = RuntimeValue(OperatorIdKey),
+            OperatorName = RuntimeValue(OperatorNameKey),
+            OperatorTeam = RuntimeValue(OperatorTeamKey),
             SlotNo = slot?.GetValueOrDefault("slot_no")?.ToString(),
             LotNo = ParamText(parameters, "wire_lot_no"),
             WireSpec = ParamText(parameters, "wire_spec"),
@@ -487,6 +492,18 @@ public sealed class FlowEngine
     private const string DoorOpenTsKey = "door_open_ts";
     private const string DoorCloseTsKey = "door_close_ts";
     private const string DoorClosedOutput = "closed";
+
+    /// <summary>
+    /// 操作人信息在运行期上下文（FlowRunContext.Runtime）里的键。
+    ///
+    /// MH 存料流程**没有**操作人输入节点，而 §1.3 不允许改 0.1 流程定义，
+    /// 所以由界面在开跑前把这些值写进 Runtime，引擎在挂接记录时读取。
+    /// 读不到就只记 operator_role，不阻断业务（§1.4）。
+    /// </summary>
+    public const string OperatorIdKey = "operator_id";
+    public const string OperatorNameKey = "operator_name";
+    public const string OperatorTeamKey = "operator_team";
+    public const string OperatorRoleKey = "operator_role";
 
     /// <summary>
     /// 提交类动作按**节点 id** 识别：归还与领用两个节点共用 mes.mat_trans.submit_return，
@@ -703,36 +720,15 @@ public sealed class FlowEngine
         && text.Contains("不能大于产品待完工数量", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 按当前 MES 模式解析 sql_id。流程定义里的 id 是**逻辑**引用：mock 条目与正式条目
-    /// 互为镜像（catalog 用 <c>mirrors</c> 标注），由引擎按模式决定实际执行哪一份。
+    /// 按当前 MES 模式解析 sql_id（逻辑引用 → mock 或正式条目）。
     ///
-    /// 两个方向都要重定向。此前只做了 mock→formal（Oracle 模式）这一向，于是引用正式
-    /// <c>mes.</c> id 的节点在 mock 模式下会直接执行 Oracle SQL：操作员流程的 9 个 MES 节点
-    /// 全部引用正式 id，其中「最近产品批号」用到 NVL，在 SQLite 下直接报
-    /// <c>no such function: NVL</c>，整条流程走不下去。
-    /// （同构做法见 WireDiscoEqpSyncService.ResolveMesItem。）
+    /// 此前只做了 mock→formal（Oracle 模式）这一向，于是引用正式 <c>mes.</c> id 的节点
+    /// 在 mock 模式下会直接执行 Oracle SQL：操作员流程的 9 个 MES 节点全部引用正式 id，
+    /// 其中「最近产品批号」用到 NVL，在 SQLite 下报 <c>no such function: NVL</c>，整条流程走不下去。
+    /// 两个方向的解析现已收敛到 <see cref="SqlCatalog.FindForMode"/>。
     /// </summary>
-    private SqlCatalogItem? ResolveSqlItem(string sqlId)
-    {
-        if (_svc.Mes.Mode == MesMode.Oracle
-            && sqlId.StartsWith("mes_mock.", StringComparison.OrdinalIgnoreCase))
-        {
-            var formalId = "mes." + sqlId["mes_mock.".Length..];
-            var formal = _svc.Catalog.Find(formalId);
-            if (formal is not null)
-                return formal;
-        }
-        else if (_svc.Mes.Mode != MesMode.Oracle
-                 && sqlId.StartsWith("mes.", StringComparison.OrdinalIgnoreCase))
-        {
-            var mockId = "mes_mock." + sqlId["mes.".Length..];
-            var mock = _svc.Catalog.Find(mockId);
-            if (mock is not null)
-                return mock;
-        }
-
-        return _svc.Catalog.Find(sqlId);
-    }
+    private SqlCatalogItem? ResolveSqlItem(string sqlId) =>
+        _svc.Catalog.FindForMode(sqlId, _svc.Mes.Mode);
 
     // ---------- 参数与取值 ----------
 

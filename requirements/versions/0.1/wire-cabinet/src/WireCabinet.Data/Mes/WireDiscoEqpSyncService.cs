@@ -256,11 +256,8 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
 
     private SqlCatalogItem? ResolveMesItem(string formalId)
     {
-        if (_mes.Mode == MesMode.Oracle)
-            return _catalog.Find(formalId);
-
-        var mockId = "mes_mock." + formalId["mes.".Length..];
-        return _catalog.Find(mockId) ?? _catalog.Find(formalId);
+        // 与 FlowEngine 共用同一套模式解析（此前各写一份）
+        return _catalog.FindForMode(formalId, _mes.Mode);
     }
 
     private bool IsLotInCabinetAsAvailable(string lot)

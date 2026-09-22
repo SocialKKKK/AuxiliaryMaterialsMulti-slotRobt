@@ -94,10 +94,14 @@ public class OperationLogMhLoadTests : IDisposable
                 : _inner.Run(item, parameters);
     }
 
-    /// <summary>跑完整条流程，返回结束时的 trace。</summary>
-    private static TraceEntry RunToEnd(FlowEngine engine, string lot)
+    /// <summary>跑完整条流程，返回结束时的 trace。runtime 模拟界面在开跑前写入的运行期值（如操作人）。</summary>
+    private static TraceEntry RunToEnd(
+        FlowEngine engine, string lot, IReadOnlyDictionary<string, string>? runtime = null)
     {
         engine.Begin(MhLoadFlow());
+        foreach (var (key, value) in runtime ?? new Dictionary<string, string>())
+            engine.Context!.Runtime[key] = value;
+
         engine.Context!.UserInputs["inputAvailableWireLotNo"] =
             new Dictionary<string, string> { ["available_wire_lot_no"] = lot };
 
@@ -164,6 +168,45 @@ public class OperationLogMhLoadTests : IDisposable
             "SELECT COUNT(*) AS c FROM app_slot WHERE wire_lot_no = :lot;",
             new Dictionary<string, object?> { ["lot"] = Lot }).First;
         Assert.Equal(1L, Convert.ToInt64(slot!["c"]));
+    }
+
+    /// <summary>
+    /// 操作人由界面经运行期上下文传入（MH 流程没有操作人输入节点，§1.3 不允许改流程定义）。
+    /// </summary>
+    [Fact]
+    public void MhLoad_CarriesOperatorFromRuntime()
+    {
+        var (db, engine) = NewEngine();
+
+        RunToEnd(engine, Lot, new Dictionary<string, string>
+        {
+            [FlowEngine.OperatorIdKey] = "1001",
+            [FlowEngine.OperatorNameKey] = "张三",
+            [FlowEngine.OperatorTeamKey] = "A班",
+        });
+
+        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.Equal("1001", row["operator_id"]);
+        Assert.Equal("张三", row["operator_name"]);
+        Assert.Equal("A班", row["operator_team"]);
+        Assert.Equal("MH", row["operator_role"]);
+    }
+
+    /// <summary>
+    /// 界面没传操作人时**仍要落记录**（只是没有姓名工号）。
+    /// 记录字段缺失绝不能变成丢记录——那正是 §1.4「不得影响既有功能」要防的。
+    /// </summary>
+    [Fact]
+    public void MhLoad_WithoutOperator_StillRecordsWithRoleOnly()
+    {
+        var (db, engine) = NewEngine();
+
+        RunToEnd(engine, Lot);
+
+        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.Null(row["operator_id"]);
+        Assert.Equal("MH", row["operator_role"]);
+        Assert.Equal(Lot, row["lot_no"]);
     }
 
     [Fact]

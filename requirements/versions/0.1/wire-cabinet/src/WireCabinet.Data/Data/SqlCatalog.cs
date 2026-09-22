@@ -41,6 +41,35 @@ public sealed class SqlCatalog
 
     public SqlCatalogItem? Find(string id) => _items.TryGetValue(id, out var it) ? it : null;
 
+    /// <summary>
+    /// 按 MES 模式解析条目。流程定义与代码里的 sql_id 是**逻辑**引用：mock 条目与正式条目
+    /// 互为镜像（catalog 用 <c>mirrors</c> 标注），由这里按模式决定实际执行哪一份。
+    ///
+    /// 两个方向都要重定向，缺镜像时回退到原 id。此前 FlowEngine 与
+    /// WireDiscoEqpSyncService 各写了一份，第三个调用方（界面解析操作人姓名）出现时
+    /// 已无处可抄，故收敛到这里。
+    /// </summary>
+    public SqlCatalogItem? FindForMode(string sqlId, MesMode mode)
+    {
+        if (string.IsNullOrWhiteSpace(sqlId)) return null;
+
+        var mirrored = MirrorId(sqlId, mode);
+        return (mirrored is null ? null : Find(mirrored)) ?? Find(sqlId);
+    }
+
+    /// <summary>镜像 id：Oracle 模式把 mes_mock.* 指向正式 mes.*，其余模式反向。</summary>
+    private static string? MirrorId(string sqlId, MesMode mode)
+    {
+        if (mode == MesMode.Oracle && sqlId.StartsWith("mes_mock.", StringComparison.OrdinalIgnoreCase))
+            return "mes." + sqlId["mes_mock.".Length..];
+
+        // 注意 "mes_mock." 不以 "mes." 开头（第 4 个字符是下划线），不会误判
+        if (mode != MesMode.Oracle && sqlId.StartsWith("mes.", StringComparison.OrdinalIgnoreCase))
+            return "mes_mock." + sqlId["mes.".Length..];
+
+        return null;
+    }
+
     public static SqlCatalog Load()
     {
         var catalog = new SqlCatalog();

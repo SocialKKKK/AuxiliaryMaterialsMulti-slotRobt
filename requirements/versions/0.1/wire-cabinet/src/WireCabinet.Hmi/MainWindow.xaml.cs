@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using WireCabinet.Hmi.Services;
 using WireCabinet.Hmi.Views;
+using WireCabinet.Data;
 using WireCabinet.Rcs;
 
 namespace WireCabinet.Hmi;
@@ -55,6 +56,21 @@ public partial class MainWindow : Window
         ApplyStatusText();
         StartAgvBackgroundPoll();
         _ = ShowInterruptedLoadAlertIfNeededAsync();
+
+        // 记录写入失败的界面告警（0.2 需求范围 §3.8 第 2 条）。
+        // 写在流程/后台线程上触发，故必须切回 UI 线程再更新状态栏。
+        App.Bootstrap.OperationLog.WriteFailed += OnOperationLogWriteFailed;
+    }
+
+    private void OnOperationLogWriteFailed(OperationLogEntry entry, string error)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnOperationLogWriteFailed(entry, error));
+            return;
+        }
+
+        SetStatus($"存取记录写入失败，已转待补偿（{OperationLogActionTypes.Label(entry.ActionType)}）：{error}");
     }
 
     private async Task ShowInterruptedLoadAlertIfNeededAsync()
@@ -74,6 +90,7 @@ public partial class MainWindow : Window
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         App.IoHealth.Updated -= OnIoHealthUpdated;
+        App.Bootstrap.OperationLog.WriteFailed -= OnOperationLogWriteFailed;
         _clockTimer.Stop();
         _agvPollTimer?.Stop();
     }

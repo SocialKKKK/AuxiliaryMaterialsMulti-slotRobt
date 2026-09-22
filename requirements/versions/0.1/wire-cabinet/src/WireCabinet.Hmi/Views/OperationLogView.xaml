@@ -60,16 +60,22 @@
                         MinWidth="88" Margin="16,0,0,0" Click="PrevPage_Click"/>
                 <Button x:Name="NextPageBtn" Content="下一页" Style="{StaticResource SecondaryButton}"
                         MinWidth="88" Margin="8,0,0,0" Click="NextPage_Click"/>
+                <Button x:Name="RetrySelectedBtn" Content="重试选中" Style="{StaticResource PrimaryButton}"
+                        MinWidth="104" Margin="16,0,0,0" Click="RetrySelected_Click" Visibility="Collapsed"/>
+                <Button x:Name="RetryAllBtn" Content="全部重试" Style="{StaticResource SecondaryButton}"
+                        MinWidth="104" Margin="8,0,0,0" Click="RetryAll_Click" Visibility="Collapsed"/>
                 <Button x:Name="BackToListBtn" Content="返回列表" Style="{StaticResource SecondaryButton}"
                         MinWidth="104" Margin="16,0,0,0" Click="BackToList_Click" Visibility="Collapsed"/>
                 <!-- 归一屏放不下的是提示文案，故给状态消息限宽并裁尾，而不是让它把按钮挤出去 -->
                 <TextBlock x:Name="StatusText" Text="" Style="{StaticResource HintText}" VerticalAlignment="Center"
-                           Margin="14,0,0,0" MaxWidth="300" TextTrimming="CharacterEllipsis"/>
+                           Margin="14,0,0,0" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="PendingBtn" Content="待补偿" Style="{StaticResource SecondaryButton}"
+                        MinWidth="104" Click="Pending_Click"/>
                 <Button x:Name="TraceBtn" Content="追溯全程" Style="{StaticResource SecondaryButton}"
-                        MinWidth="104" Click="Trace_Click"/>
+                        MinWidth="104" Margin="8,0,0,0" Click="Trace_Click"/>
                 <Button x:Name="ExportBtn" Content="导出 Excel" Style="{StaticResource PrimaryButton}"
                         MinWidth="130" Margin="8,0,0,0" Click="Export_Click"/>
             </StackPanel>
@@ -77,9 +83,10 @@
 
         <!-- 列表：固定 20 行高度，一屏内看完，不触发滚动 -->
         <Border Grid.Row="4" Style="{StaticResource CardPanel}" Padding="6,4,6,6">
-            <ListView x:Name="RecordList" BorderThickness="0" Background="Transparent"
-                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <Grid>
+                <ListView x:Name="RecordList" BorderThickness="0" Background="Transparent"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Height" Value="23"/>
@@ -107,6 +114,32 @@
                     </GridView>
                 </ListView.View>
             </ListView>
+
+                <!-- 待补偿列表（§3.8 第 4 项）：人工重试入口。与记录列表同一区域切换显示，
+                     避免在半屏里塞两个列表而需要滚动 -->
+                <ListView x:Name="PendingList" BorderThickness="0" Background="Transparent"
+                          SelectionMode="Extended" Visibility="Collapsed"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Height" Value="23"/>
+                            <Setter Property="Padding" Value="2,0"/>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="入队时间" DisplayMemberBinding="{Binding TsText}" Width="140"/>
+                            <GridViewColumn Header="动作类型" DisplayMemberBinding="{Binding ActionText}" Width="130"/>
+                            <GridViewColumn Header="焊丝批号" DisplayMemberBinding="{Binding LotNo}" Width="130"/>
+                            <GridViewColumn Header="状态" DisplayMemberBinding="{Binding StatusText}" Width="66"/>
+                            <GridViewColumn Header="重试" DisplayMemberBinding="{Binding RetryCount}" Width="56"/>
+                            <GridViewColumn Header="下次重试" DisplayMemberBinding="{Binding NextRetryText}" Width="140"/>
+                            <GridViewColumn Header="最后错误" DisplayMemberBinding="{Binding ErrorText}" Width="280"/>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

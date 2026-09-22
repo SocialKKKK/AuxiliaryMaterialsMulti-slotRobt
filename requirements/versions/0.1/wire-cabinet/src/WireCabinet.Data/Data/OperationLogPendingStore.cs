@@ -5,6 +5,7 @@ namespace WireCabinet.Data;
 /// <summary>一条待补偿的记录：写入 app_operation_log 失败后转存，等待后台或人工重试。</summary>
 public sealed record OperationLogPendingRow(
     long Id,
+    string? Ts,
     OperationLogEntry Entry,
     string Status,
     int RetryCount,
@@ -32,7 +33,7 @@ public sealed class OperationLogPendingStore
     public const string StatusSuccess = "success";
 
     private const string SelectColumns =
-        "id, entry_json, status, retry_count, next_retry_at, last_error, last_try_ts";
+        "id, ts, entry_json, status, retry_count, next_retry_at, last_error, last_try_ts";
 
     private readonly IAppDb _appDb;
 
@@ -138,6 +139,7 @@ public sealed class OperationLogPendingStore
 
             rows.Add(new OperationLogPendingRow(
                 Convert.ToInt64(row.GetValueOrDefault("id") ?? 0L),
+                row.GetValueOrDefault("ts")?.ToString(),
                 entry,
                 row.GetValueOrDefault("status")?.ToString() ?? StatusPending,
                 Convert.ToInt32(row.GetValueOrDefault("retry_count") ?? 0),

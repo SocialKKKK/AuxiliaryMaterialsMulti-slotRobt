@@ -66,6 +66,8 @@ public class OperationLogCompensationTests : IDisposable
         Assert.False(sink.TryWrite(Entry("LOT-RETRY-1")).Success);
         var queued = Assert.Single(sink.ListPending());
         Assert.Equal(0, queued.RetryCount);
+        // 待补偿列表要显示首次入队时间
+        Assert.False(string.IsNullOrWhiteSpace(queued.Ts), "待补偿行缺少入队时间。");
 
         RestoreRecordTable(db);
         Assert.Equal(1, sink.RetryPendingBatch());

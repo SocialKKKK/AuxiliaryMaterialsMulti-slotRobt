@@ -152,4 +152,49 @@ public class FlowRegressionTests : IDisposable
 
         Assert.Empty(withoutSuccess);
     }
+
+    /// <summary>
+    /// 操作员「存废取新」主路径。这条流程此前在本机根本跑不起来——它要查
+    /// mv_fw_username / fw_eqpres_eqpinformation / fw_wip_trans / v_fw_wip_sublot，
+    /// 而产品脚本从不创建这些 mock MES 表（只有 v_fw_material_indetail 被建出来且无数据）。
+    /// 补上 scripts/mes-mock.sqlite.sql 后这里才可能通过。
+    /// </summary>
+    [Fact]
+    public void OperatorFlow_HappyPath_ReachesSuccessTerminal()
+    {
+        var (_, engine) = NewEngine();
+        var flow = AllFlows().Single(f => f.FlowId == "operator_return_wire_and_issue_available_wire");
+
+        engine.Begin(flow);
+        foreach (var (nodeId, fields) in OperatorInputs())
+            engine.Context!.UserInputs[nodeId] = fields;
+
+        var trace = RunToEnd(engine);
+        var last = trace[^1];
+
+        var tail = string.Join("\n", trace.TakeLast(8).Select(t => $"{t.NodeId} [{t.Outcome}] {t.Result}"));
+        Assert.True(
+            last.NodeId == "endSuccess",
+            $"未走到成功终止，实际停在 {last.NodeId} [{last.Outcome}] {last.Result}\n末尾轨迹：\n{tail}");
+        Assert.Equal("success", last.Outcome);
+    }
+
+    /// <summary>演示数据取值：操作员 1001=张三、归还批号 14Z1888-0160、机台 1QH029。</summary>
+    private static Dictionary<string, Dictionary<string, string>> OperatorInputs() => new()
+    {
+        ["inputOperatorWorkInfo"] = new()
+        {
+            ["operator_id"] = "1001",
+            ["work_group"] = "A班",
+            ["shift"] = "白班",
+        },
+        ["inputReturnedWireLotNo"] = new() { ["returned_wire_lot_no"] = "14Z1888-0160" },
+        ["inputEqpNo"] = new() { ["eqp_no"] = "1QH029" },
+        ["inputRemainingQty"] = new() { ["remaining_qty"] = "1000" },
+        ["inputIssueProductLotNo"] = new() { ["issue_product_lot_no"] = "P20260602-01" },
+        ["closeReturnSlotDoor"] = new() { ["closed"] = "已关闭" },
+        ["loadReturnedWire"] = new() { ["loaded"] = "已放入" },
+        ["closeIssueSlotDoor"] = new() { ["closed"] = "已关闭" },
+        ["unloadWire"] = new() { ["unloaded"] = "已取出" },
+    };
 }

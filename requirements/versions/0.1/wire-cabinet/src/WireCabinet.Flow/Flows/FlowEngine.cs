@@ -209,7 +209,7 @@ public sealed class FlowEngine
 
         if (string.Equals(node.Batch, "open_slots", StringComparison.OrdinalIgnoreCase))
         {
-            var item0 = node.SqlId is null ? null : _svc.Catalog.Find(node.SqlId);
+            var item0 = node.SqlId is null ? null : ResolveSqlItem(node.SqlId);
             var ids = _svc.Slot.OpenDoorIds();
             var (baseParams, _) = BuildParams(node);
             var errors = 0;
@@ -228,7 +228,7 @@ public sealed class FlowEngine
         }
 
         var (parameters, display) = BuildParams(node);
-        var item = node.SqlId is null ? null : _svc.Catalog.Find(node.SqlId);
+        var item = node.SqlId is null ? null : ResolveSqlItem(node.SqlId);
         if (item is null)
         {
             findings.Add(Err(node, "缺少SQL", $"节点引用的 sql_id '{node.SqlId}' 在 sql-catalog 中不存在。"));
@@ -324,7 +324,7 @@ public sealed class FlowEngine
             ok = _svc.Slot.OpenDoorAsync(slotId).GetAwaiter().GetResult();
             if (!ok)
                 findings.Add(Err(node, "开门", $"格口 {slotId} 开锁失败（已禁用、硬件无响应或格口不存在）。"));
-            else if (node.SqlId is not null && _svc.Catalog.Find(node.SqlId) is { } item)
+            else if (node.SqlId is not null && ResolveSqlItem(node.SqlId) is { } item)
             {
                 var r = _svc.AppDb.Run(item, new Dictionary<string, object?> { ["slot_id"] = slotId });
                 sql = r.RenderedSql;
@@ -350,8 +350,8 @@ public sealed class FlowEngine
     {
         var findings = new List<Finding>();
         var (parameters, _) = BuildParams(node);
-        var listItem = node.SqlId is null ? null : _svc.Catalog.Find(node.SqlId);
-        var openItem = node.OpenSqlId is null ? null : _svc.Catalog.Find(node.OpenSqlId);
+        var listItem = node.SqlId is null ? null : ResolveSqlItem(node.SqlId);
+        var openItem = node.OpenSqlId is null ? null : ResolveSqlItem(node.OpenSqlId);
 
         if (listItem is null)
         {
@@ -560,7 +560,16 @@ public sealed class FlowEngine
         && text.Contains("归还数量", StringComparison.OrdinalIgnoreCase)
         && text.Contains("不能大于产品待完工数量", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Oracle 模式优先使用 formal catalog 中的 mes.* 条目，避免 mes_mock 默认值干扰。</summary>
+    /// <summary>
+    /// 按当前 MES 模式解析 sql_id。流程定义里的 id 是**逻辑**引用：mock 条目与正式条目
+    /// 互为镜像（catalog 用 <c>mirrors</c> 标注），由引擎按模式决定实际执行哪一份。
+    ///
+    /// 两个方向都要重定向。此前只做了 mock→formal（Oracle 模式）这一向，于是引用正式
+    /// <c>mes.</c> id 的节点在 mock 模式下会直接执行 Oracle SQL：操作员流程的 9 个 MES 节点
+    /// 全部引用正式 id，其中「最近产品批号」用到 NVL，在 SQLite 下直接报
+    /// <c>no such function: NVL</c>，整条流程走不下去。
+    /// （同构做法见 WireDiscoEqpSyncService.ResolveMesItem。）
+    /// </summary>
     private SqlCatalogItem? ResolveSqlItem(string sqlId)
     {
         if (_svc.Mes.Mode == MesMode.Oracle
@@ -571,6 +580,15 @@ public sealed class FlowEngine
             if (formal is not null)
                 return formal;
         }
+        else if (_svc.Mes.Mode != MesMode.Oracle
+                 && sqlId.StartsWith("mes.", StringComparison.OrdinalIgnoreCase))
+        {
+            var mockId = "mes_mock." + sqlId["mes.".Length..];
+            var mock = _svc.Catalog.Find(mockId);
+            if (mock is not null)
+                return mock;
+        }
+
         return _svc.Catalog.Find(sqlId);
     }
 

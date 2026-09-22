@@ -1,4 +1,4 @@
-using AgvDispatch.Sdk;
+﻿using AgvDispatch.Sdk;
 using AgvDispatch.Sdk.Models;
 using WireCabinet.Core.Config;
 
@@ -17,13 +17,18 @@ public sealed class LowBatteryChargeService
     private int? _returnDestination;
     private int? _manualWorkStationHint;
 
+    /// <summary>充满后自动返航的记录（0.2 §3.1 第 8 项）；为 null 时不记。</summary>
+    private readonly AgvActionLog? _agvLog;
+
     public LowBatteryChargeService(
         IAgvDispatchClient client,
         AgvDispatchOptions options,
         AgvThresholdOptions thresholds,
         AgvOrderGate orderGate,
-        StationConfiguration stations)
+        StationConfiguration stations,
+        AgvActionLog? agvLog = null)
     {
+        _agvLog = agvLog;
         _client = client;
         _options = options;
         _thresholds = thresholds;
@@ -130,10 +135,12 @@ public sealed class LowBatteryChargeService
             var order = await _client.CreateMoveOrderAsync(returnStation, cancellationToken: ct).ConfigureAwait(false);
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Move);
             var name = _stations.TryGetWorkStationAt(returnStation)?.Name ?? returnStation.ToString();
+            _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: true, detail: $"→ {name}（{order.OrderId}）");
             return $"充满后已返航 {name}（站点 {returnStation}），订单 {order.OrderId}";
         }
         catch (Exception ex)
         {
+            _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: false, error: ex.Message);
             return $"返航失败：{ex.Message}";
         }
     }

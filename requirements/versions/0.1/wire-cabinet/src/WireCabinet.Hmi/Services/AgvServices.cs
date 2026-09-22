@@ -95,7 +95,7 @@ public sealed class AgvServices : IDisposable
             _client = AgvDispatchClient.Create(_options);
             ControlLoop = new AgvControlLoop(_client, _options, doors, _orderGate);
             Move = new ManualMoveService(_client, _options, slots, ControlLoop);
-            Charge = new LowBatteryChargeService(_client, _options, _thresholds, _orderGate, Stations);
+            Charge = new LowBatteryChargeService(_client, _options, _thresholds, _orderGate, Stations, _agvLog);
         }
         catch (Exception ex)
         {

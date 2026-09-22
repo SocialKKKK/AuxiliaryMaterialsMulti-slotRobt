@@ -101,17 +101,14 @@ public class FlowRegressionTests : IDisposable
     /// <summary>
     /// 流程定义结构校验：路由目标必须指向已定义节点（终止节点的空目标除外）。
     ///
-    /// 已知唯一例外：
-    ///   operator_return_wire_and_issue_available_wire.updateIssueSlotAfterUnload -&gt; End
-    /// 操作员流程结尾写的是 `success: End`，但 End 不是已定义节点，且该流程
-    /// **没有任何 success 终止节点**（其余 5 条都用 endSuccess）。于是它正常走完时
-    /// 最后一条 trace 是「路由指向不存在的节点」错误，而不是成功终止。
-    /// 修复方式：给它补一个 endSuccess 终止节点并把 success 改指向它。
-    ///
-    /// 本断言是精确列表：新增悬空目标会失败，修好该缺陷后也会失败（提示同步更新）。
+    /// 此前这里固定着一个缺陷：操作员流程结尾写的是 `success: End`，而 End 不是已定义节点，
+    /// 且该流程没有任何 success 终止节点。结果是操作员**成功**走完存废取新后，最后一条 trace
+    /// 变成「路由指向不存在的节点 'End'」，FlowCoordinator 会把这句内部串当作结束消息显示出来。
+    /// 已按 lab README 的约定回写 flow-sql-map：补 endSuccess 终止节点并把 success 改指向它。
+    /// 现在该断言是严格的——任何悬空路由都会失败。
     /// </summary>
     [Fact]
-    public void RoutingTargets_PointToDefinedNodes_ExceptKnownOperatorFlowDefect()
+    public void RoutingTargets_AllPointToDefinedNodes()
     {
         var dangling = AllFlows()
             .SelectMany(f => f.Nodes.Values
@@ -121,9 +118,7 @@ public class FlowRegressionTests : IDisposable
             .OrderBy(x => x)
             .ToList();
 
-        Assert.Equal(
-            new[] { "operator_return_wire_and_issue_available_wire.updateIssueSlotAfterUnload -> End" },
-            dangling);
+        Assert.Empty(dangling);
     }
 
     /// <summary>流程引用的每个 sql_id 都必须在 catalog 中可解析（防止 catalog 改名后流程静默断链）。</summary>
@@ -145,9 +140,9 @@ public class FlowRegressionTests : IDisposable
         Assert.Empty(missing);
     }
 
-    /// <summary>除操作员流程外，每条流程都应有一个可达的 success 终止节点。</summary>
+    /// <summary>每条流程都必须有 success 终止节点（缺失会让正常结束变成「节点不存在」错误）。</summary>
     [Fact]
-    public void Flows_HaveSuccessTerminal_ExceptKnownOperatorFlowDefect()
+    public void EveryFlow_HasSuccessTerminal()
     {
         var withoutSuccess = AllFlows()
             .Where(f => !f.Nodes.Values.Any(n => n.TerminalKind == "success"))
@@ -155,6 +150,6 @@ public class FlowRegressionTests : IDisposable
             .OrderBy(x => x)
             .ToList();
 
-        Assert.Equal(new[] { "operator_return_wire_and_issue_available_wire" }, withoutSuccess);
+        Assert.Empty(withoutSuccess);
     }
 }

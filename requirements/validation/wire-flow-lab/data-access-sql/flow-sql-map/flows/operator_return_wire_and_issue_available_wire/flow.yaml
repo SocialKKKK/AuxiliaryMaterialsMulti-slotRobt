@@ -614,7 +614,7 @@ nodes:
     - name: slot_id
       from: node:queryMatchedAvailableWire.slot_id
     routing:
-      success: End
+      success: endSuccess
       error: showUpdateIssueSlotAfterUnloadErrorMessage
   updateReturnSlotDB:
     text: 更新归还格口库存信息
@@ -641,6 +641,10 @@ nodes:
     routing:
       success: queryWireByLotNo
       error: showWireReturnFailMessage
+  endSuccess:
+    text: 归还与领用完成
+    type: terminal
+    terminal_kind: success
 context_defaults:
   return_task: 归还
   issue_task: 领用

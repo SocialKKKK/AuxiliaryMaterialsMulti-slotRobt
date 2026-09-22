@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private readonly MaintView _maintView = new();
     private readonly MesReconView _mesReconView = new();
     private readonly AgvView _agvView = new();
+    private readonly OperationLogView _opLogView = new();
     private readonly DispatcherTimer _clockTimer;
     private DispatcherTimer? _agvPollTimer;
     private readonly AgvArrivalNavigator _agvArrivalNav = new();
@@ -236,6 +237,35 @@ public partial class MainWindow : Window
             _roleLabel = "MES 对账";
             _flowStatus = null;
             _lastRoleRadio = RbMesRecon;
+            ApplyStatusText();
+        });
+    }
+
+    private void RbOpLog_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressRoleRevert) return;
+        TrySwitchRole(() =>
+        {
+            if (MainContent == null) return;
+
+            // 物料员或维护密码均可（0.2 §2）；两个门禁都没配密码时不拦。
+            if (App.OpLogAccess.IsGateEnabled && !App.OpLogAccess.IsUnlocked)
+            {
+                var dialog = new PasswordDialog("存取记录验证", "请输入物料员或维护密码", App.OpLogAccess.TryUnlock)
+                {
+                    Owner = this
+                };
+                if (dialog.ShowDialog() != true)
+                {
+                    RevertToLastRole();
+                    return;
+                }
+            }
+
+            MainContent.Content = _opLogView;
+            _roleLabel = "存取记录";
+            _flowStatus = null;
+            _lastRoleRadio = RbOpLog;
             ApplyStatusText();
         });
     }

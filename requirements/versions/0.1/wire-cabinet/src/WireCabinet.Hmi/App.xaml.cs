@@ -23,6 +23,9 @@ public partial class App : Application
     public static DoorOperationGate DoorOps { get; private set; } = null!;
     public static MaintAccessGate MaintAccess { get; private set; } = null!;
     public static MhAccessGate MhAccess { get; private set; } = null!;
+
+    /// <summary>「物料存取记录」页签门禁：物料员或维护密码均可放行，操作员不可见（0.2 §2）。</summary>
+    public static OperationLogAccessGate OpLogAccess { get; private set; } = null!;
     public static HmiUiGateService UiGate { get; private set; } = null!;
     public static AgvDoorInterlockNotifier AgvDoorNotifier { get; private set; } = new();
     public static FlowTraceHub? FlowTrace { get; private set; }
@@ -59,6 +62,7 @@ public partial class App : Application
         DoorOps = Bootstrap.DoorOps;
         MaintAccess = new MaintAccessGate(config["MaintAccess:Password"]);
         MhAccess = new MhAccessGate(config["MhAccess:Password"]);
+        OpLogAccess = new OperationLogAccessGate(MaintAccess, MhAccess);
         if (Bootstrap.FlowTraceEnabled)
         {
             FlowTrace = new FlowTraceHub(Bootstrap.FlowTraceOptions, Dispatcher);

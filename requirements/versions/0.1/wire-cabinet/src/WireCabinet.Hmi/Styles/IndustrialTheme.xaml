@@ -253,12 +253,16 @@
     </Style>
 
     <!-- ============ 角色切换 Tab 按钮 ============ -->
+    <!-- 横向内边距 28→12、字号 17→16：0.2 加了第 6 个页签「存取记录」后，
+         6 个页签按原尺寸共需约 890px 而顶栏只留得出约 736px，会压到标题与窗口按钮。
+         纵向内边距 10→12 补回字号变小损失的约 2px，页签触控高度仍有约 45px，
+         不低于 HMI界面约束 §3 的 44px 下限。 -->
     <Style x:Key="RoleTabButton" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="17"/>
+        <Setter Property="FontSize" Value="16"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="#FFB6C2CF"/>
-        <Setter Property="Padding" Value="28,10"/>
+        <Setter Property="Padding" Value="12,12"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>

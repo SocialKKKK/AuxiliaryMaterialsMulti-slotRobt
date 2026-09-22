@@ -78,6 +78,11 @@
                     <RadioButton x:Name="RbAgv" Content="控车 AGV" GroupName="Role"
                                  Style="{StaticResource RoleTabButton}"
                                  Checked="RbAgv_Checked"/>
+                    <!-- 0.2 新增第 6 页签。顶栏空间已满，故用 4 字标签「存取记录」而不是 6 字
+                         （见 0.2 需求范围 §6 的顶栏实测与三个备选方案）。 -->
+                    <RadioButton x:Name="RbOpLog" Content="存取记录" GroupName="Role"
+                                 Style="{StaticResource RoleTabButton}"
+                                 Checked="RbOpLog_Checked"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">

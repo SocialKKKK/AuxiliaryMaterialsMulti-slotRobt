@@ -70,7 +70,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetStatus($"存取记录写入失败，已转待补偿（{OperationLogActionTypes.Label(entry.ActionType)}）：{error}");
+        SetStatus($"存取记录写入失败（{OperationLogActionTypes.Label(entry.ActionType)}）：{error}");
     }
 
     private async Task ShowInterruptedLoadAlertIfNeededAsync()

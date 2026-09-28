@@ -102,7 +102,7 @@ public partial class App : Application
             var closed = await doorReconciler.ReconcileAsync(snapshots);
             if (closed.Count > 0)
             {
-                await MhDoors.NotifySlotsClosedAsync(closed);
+                await MhDoors.NotifySlotsClosedAsync(closed, reconciledByHardware: true);
                 Bootstrap.FlowSlots.Reload();
             }
             else
@@ -113,6 +113,8 @@ public partial class App : Application
             // 否则 2 秒一轮会把同一把卡住的锁刷成记录洪水。
             foreach (var (_, slotNo) in await doorReconciler.FindUncommandedAsync(snapshots))
                 MhDoors.RecordUncommandedOpen(slotNo);
+            foreach (var (_, slotNo) in doorReconciler.RecoveredUncommanded)
+                MhDoors.RecordUncommandedClosed(slotNo);
         });
 
         base.OnStartup(e);

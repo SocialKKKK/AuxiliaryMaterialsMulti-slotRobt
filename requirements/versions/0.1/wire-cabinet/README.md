@@ -32,8 +32,8 @@ dotnet test WireCabinet.sln     # 单元测试（src/WireCabinet.Tests）
 
 | 文件 | 说明 |
 |------|------|
-| `src/WireCabinet.Hmi/appsettings.json` | MES、RCS、应用库路径 |
-| `src/WireCabinet.Hmi/appsettings.Local.json` | **本地覆盖**（不提交）：MES 连接串、调试开关 |
+| `src/WireCabinet.Hmi/appsettings.json` | 共享默认配置与应用库路径；MES 连接串及 RCS 凭据留空 |
+| `src/WireCabinet.Hmi/appsettings.Local.json` | **本地覆盖**（不提交）：现场 MES 连接串、RCS 地址与凭据、调试开关；部署时保留 |
 | `wire-cabinet/slot-config/io-modules.yaml` | 由 `io-modules.template.yaml` 复制，填写 4 模块 IP（不提交） |
 | `wire-cabinet/station-config/stations.yaml` | 由 `stations.template.yaml` 复制，填写站点号 |
 

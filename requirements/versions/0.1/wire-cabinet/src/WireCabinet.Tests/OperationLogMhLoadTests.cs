@@ -123,13 +123,18 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal("endSuccess", last.NodeId);
 
         var rows = db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows;
-        Assert.Single(rows); // 一次业务操作一条，不多不少
+        Assert.Equal(3, rows.Count); // 业务记录一条，开/关门事件各一条
+        Assert.Equal(new[] { "door_open", "door_close", "mh_load_available_wire" },
+            rows.Select(r => r["action_type"]?.ToString()).ToArray());
+        Assert.Equal(rows[0]["door_open_ts"], rows[1]["door_open_ts"]);
+        Assert.Null(rows[0]["door_close_ts"]);
+        Assert.False(string.IsNullOrWhiteSpace(rows[1]["door_close_ts"]?.ToString()));
 
         // 格位号应与流程实际选中的格口一致（不硬编码，避免依赖 seed 顺序）
         var chosenSlotNo = engine.Context!.NodeResults["checkAvailableSlot"]["slot_no"]?.ToString();
         Assert.False(string.IsNullOrWhiteSpace(chosenSlotNo));
 
-        var row = rows[0];
+        var row = rows[2];
         Assert.Equal("mh_load_available_wire", row["action_type"]);
         Assert.Equal(Lot, row["lot_no"]);              // 焊丝批号
         Assert.Equal(Spec, row["wire_spec"]);          // 焊丝型号
@@ -161,7 +166,7 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.DoesNotContain(updateDb.Findings, f => f.Category == "存取记录" && f.Severity == Severity.Error);
 
         var pending = db.Query("SELECT COUNT(*) AS c FROM operation_log_pending;", new Dictionary<string, object?>()).First;
-        Assert.Equal(1L, Convert.ToInt64(pending!["c"]));
+        Assert.Equal(3L, Convert.ToInt64(pending!["c"]));
 
         // 业务本身仍然完成：格口确实绑上了焊丝
         var slot = db.Query(
@@ -185,7 +190,8 @@ public class OperationLogMhLoadTests : IDisposable
             [FlowEngine.OperatorTeamKey] = "A班",
         });
 
-        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        var row = db.Query("SELECT * FROM app_operation_log WHERE action_type='mh_load_available_wire';",
+            new Dictionary<string, object?>()).Rows.Single();
         Assert.Equal("1001", row["operator_id"]);
         Assert.Equal("张三", row["operator_name"]);
         Assert.Equal("A班", row["operator_team"]);
@@ -203,7 +209,8 @@ public class OperationLogMhLoadTests : IDisposable
 
         RunToEnd(engine, Lot);
 
-        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        var row = db.Query("SELECT * FROM app_operation_log WHERE action_type='mh_load_available_wire';",
+            new Dictionary<string, object?>()).Rows.Single();
         Assert.Null(row["operator_id"]);
         Assert.Equal("MH", row["operator_role"]);
         Assert.Equal(Lot, row["lot_no"]);
@@ -236,7 +243,8 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal("fail", last.Outcome);
         Assert.Equal("endFail", last.NodeId);
 
-        var row = Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        var row = db.Query("SELECT * FROM app_operation_log WHERE action_type='mh_load_available_wire';",
+            new Dictionary<string, object?>()).Rows.Single();
         Assert.Equal("mh_load_available_wire", row["action_type"]); // 与成功记录同一动作类型
         Assert.Equal("失败", row["result"]);
         Assert.Equal(Lot, row["lot_no"]);

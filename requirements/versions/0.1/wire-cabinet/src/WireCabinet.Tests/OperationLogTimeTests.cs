@@ -79,13 +79,19 @@ public class OperationLogTimeTests : IDisposable
     /// 筛选条件原样下传则只是查不准，不会让查询报错。
     /// </summary>
     [Theory]
-    [InlineData("2026-09-22T09:19:58Z")]
     [InlineData("not-a-time")]
     [InlineData("2026/09/22 09:19")]
     public void UnrecognizedFormat_PassesThrough(string text)
     {
         Assert.Equal(text, OperationLogTime.ToLocalText(text, Plus8));
         Assert.Equal(text, OperationLogTime.ToUtcText(text, Plus8));
+    }
+
+    [Fact]
+    public void LegacyIsoUtcDoorTime_StillDisplaysInLocalTime()
+    {
+        Assert.Equal("2026-09-22 17:19:58",
+            OperationLogTime.ToLocalText("2026-09-22T09:19:58.0000000Z", Plus8));
     }
 
     // ---------- 查询服务：两个方向都要转 ----------

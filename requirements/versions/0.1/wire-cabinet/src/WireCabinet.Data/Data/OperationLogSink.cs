@@ -1,8 +1,11 @@
 namespace WireCabinet.Data;
 
 /// <summary>一条物料存取记录。字段与 app_operation_log 对齐，未赋值即写 NULL。</summary>
-public sealed class OperationLogEntry
+public sealed record OperationLogEntry
 {
+    /// <summary>动作发生时刻（UTC）。补偿时沿用原值，不使用重试时刻。</summary>
+    public string? Ts { get; init; }
+
     // 动作与主体
     public string? ActionType { get; init; }
     public string? SlotNo { get; init; }
@@ -43,10 +46,10 @@ public sealed class OperationLogEntry
 }
 
 /// <summary>记录写入结果。失败不是异常，是返回值。</summary>
-public readonly record struct OperationLogWriteResult(bool Success, string? Error)
+public readonly record struct OperationLogWriteResult(bool Success, string? Error, bool Queued = false)
 {
     public static OperationLogWriteResult Ok() => new(true, null);
-    public static OperationLogWriteResult Fail(string error) => new(false, error);
+    public static OperationLogWriteResult Fail(string error, bool queued = false) => new(false, error, queued);
 }
 
 /// <summary>
@@ -117,14 +120,16 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
 
     public OperationLogWriteResult TryWrite(OperationLogEntry entry)
     {
+        entry = entry with { Ts = string.IsNullOrWhiteSpace(entry.Ts) ? OperationLogTime.UtcNowText() : entry.Ts };
         var result = WriteRecord(entry);
         if (result.Success)
             return result;
 
         // 业务路径写失败才入队；重试路径不能再入队，否则每重试一次队列就长一条。
-        QueuePending(entry, result.Error!);
-        WriteFailed?.Invoke(entry, result.Error!);
-        return result;
+        var queued = QueuePending(entry, result.Error!);
+        var error = queued ? result.Error! : $"{result.Error}；待补偿保存失败，请立即联系维护人员。";
+        NotifyWriteFailed(entry, error);
+        return OperationLogWriteResult.Fail(error, queued);
     }
 
     public IReadOnlyList<OperationLogPendingRow> ListPending() => _pending.ListActive();
@@ -153,12 +158,11 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
         if (string.Equals(row.Status, OperationLogPendingStore.StatusFailed, StringComparison.OrdinalIgnoreCase) && !manual)
             return OperationLogWriteResult.Fail("已达最大重试次数，请在待补偿列表中人工重试。");
 
-        var result = WriteRecord(row.Entry);
+        // 兼容旧版队列中没有 Ts 的 JSON：用原入队时刻，不用本次重试时刻。
+        var entry = row.Entry with { Ts = row.Entry.Ts ?? row.Ts ?? OperationLogTime.UtcNowText() };
+        var result = WritePendingRecord(entry, id);
         if (result.Success)
-        {
-            _pending.MarkSuccess(id);
             return result;
-        }
 
         var nextCount = row.RetryCount + 1;
 
@@ -175,7 +179,7 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
                 result.Error);
         }
 
-        WriteFailed?.Invoke(row.Entry, result.Error!);
+        NotifyWriteFailed(entry, result.Error!);
         return result;
     }
 
@@ -208,23 +212,61 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
         }
     }
 
+    private OperationLogWriteResult WritePendingRecord(OperationLogEntry entry, long pendingId)
+    {
+        // 真实 SQLite 通道必须原子化补写；测试替身才走普通接口。
+        if (_appDb is not SqliteAppDb sqlite)
+        {
+            var fallback = WriteRecord(entry);
+            if (!fallback.Success) return fallback;
+            try { _pending.MarkSuccess(pendingId); return fallback; }
+            catch (Exception ex) { return OperationLogWriteResult.Fail(ex.Message); }
+        }
+
+        var item = _catalog.Find(InsertSqlId);
+        if (item is null)
+            return OperationLogWriteResult.Fail($"缺少 SQL 条目 {InsertSqlId}。");
+
+        var result = sqlite.InsertOperationLogAndCompletePending(item, ToParameters(entry), pendingId);
+        return result.HasError
+            ? OperationLogWriteResult.Fail(result.Error!)
+            : OperationLogWriteResult.Ok();
+    }
+
     /// <summary>
     /// 尽力转存待补偿；这里同样不能抛（连库都写不进去时只能放弃）。
     /// </summary>
-    private void QueuePending(OperationLogEntry entry, string error)
+    private bool QueuePending(OperationLogEntry entry, string error)
     {
         try
         {
             _pending.Enqueue(entry, error);
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[OperationLog] 待补偿转存失败：{error}");
+            System.Diagnostics.Trace.TraceError($"[OperationLog] 待补偿转存失败：{ex}");
+            return false;
+        }
+    }
+
+    private void NotifyWriteFailed(OperationLogEntry entry, string error)
+    {
+        if (WriteFailed is null) return;
+        foreach (var subscriber in WriteFailed.GetInvocationList())
+        {
+            try { ((Action<OperationLogEntry, string>)subscriber)(entry, error); }
+            catch (Exception ex)
+            {
+                // 告警订阅者自身故障同样不得回流到业务链路。
+                System.Diagnostics.Trace.TraceError($"[OperationLog] 告警处理失败：{ex}");
+            }
         }
     }
 
     private static Dictionary<string, object?> ToParameters(OperationLogEntry e) => new()
     {
+        ["ts"] = e.Ts,
         ["operator_id"] = e.OperatorId,
         ["operator_name"] = e.OperatorName,
         ["operator_team"] = e.OperatorTeam,

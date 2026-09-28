@@ -17,6 +17,8 @@ public sealed class OpenSlotResult
     public string SlotNo { get; init; } = "";
     public long SlotId { get; init; }
     public string Message { get; init; } = "";
+    /// <summary>开锁完成时刻（UTC）；批量操作逐格记录，避免把整批结束时刻当作每格开门时刻。</summary>
+    public string? OpenedAtUtc { get; init; }
 }
 
 public sealed class BatchOpenOptions
@@ -57,7 +59,8 @@ public interface ISlotControlService
         IReadOnlyList<string> slotCodes,
         BatchOpenOptions options,
         OpenSlotRequest template,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Action<OpenSlotResult>? onResult = null);
     Task<bool> ConfirmDoorClosedAsync(long slotId, CancellationToken ct = default);
     bool AreAllDoorsClosed();
     bool HasUnlockInProgress();

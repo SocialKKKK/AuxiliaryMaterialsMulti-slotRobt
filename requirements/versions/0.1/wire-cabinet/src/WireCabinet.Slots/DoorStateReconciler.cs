@@ -16,6 +16,7 @@ public sealed class DoorStateReconciler
 
     /// <summary>计划外开门的去重：持续释锁只记一次，否则每次轮询都会刷一条。</summary>
     private readonly UncommandedOpenTracker _uncommanded = new();
+    public IReadOnlyList<(long SlotId, string SlotNo)> RecoveredUncommanded { get; private set; } = [];
 
     /// <summary>对库 open 且 DI 锁闭合的格口执行 ConfirmDoorClosed。返回成功关库的 slot_id。</summary>
     public async Task<IReadOnlyList<long>> ReconcileAsync(
@@ -65,21 +66,34 @@ public sealed class DoorStateReconciler
         var found = new List<(long, string)>();
         if (!_hardware.IsConfigured || snapshots.Count == 0)
         {
-            _uncommanded.FilterNew([]);   // 读不到就当作都恢复正常，避免下一次误判为「首次」
+            _uncommanded.SuspendObservation(); // 无 DI 读数，不能判断恢复，也不能再次计为首次
+            RecoveredUncommanded = [];     // 没读到 DI 不能据此断言已关门
             return found;
         }
 
         var slots = await _slots.ListSlotsAsync(new SlotListFilter { EnabledOnly = false }, ct);
         var matched = new List<(long SlotId, string SlotNo)>();
+        var unknown = new List<long>();
         foreach (var row in slots)
         {
-            if (!snapshots.TryGetValue(row.SlotNo, out var hw)) continue;
+            if (!snapshots.TryGetValue(row.SlotNo, out var hw) || !hw.ReadOk || hw.LockClosed is null)
+            {
+                unknown.Add(row.SlotId);
+                continue;
+            }
             if (IsUncommanded(hw.Wired, hw.ReadOk, hw.LockClosed, row.DoorState))
                 matched.Add((row.SlotId, row.SlotNo));
         }
 
         // 只返回**本轮新出现**的：持续释锁不能每轮都记一条
-        var fresh = _uncommanded.FilterNew(matched.Select(m => m.SlotId).ToList());
+        var fresh = _uncommanded.FilterNew(matched.Select(m => m.SlotId).ToList(), unknown);
+        RecoveredUncommanded = _uncommanded.LastRecovered
+            .Select(id => slots.FirstOrDefault(s => s.SlotId == id))
+            .Where(s => s is not null
+                && snapshots.TryGetValue(s.SlotNo, out var hw)
+                && hw.ReadOk && hw.LockClosed == true)
+            .Select(s => (s!.SlotId, s.SlotNo))
+            .ToList();
         foreach (var slotId in fresh)
             found.Add(matched.First(m => m.SlotId == slotId));
 

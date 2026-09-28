@@ -39,18 +39,34 @@ public sealed class SlotDoorActionLog
     /// 为每个**成功打开**的格口各写一条，返回写入成功的条数。
     /// 记录写入失败不影响开门结果（§1.4 第 1 条），故只吞掉失败并计数。
     /// </summary>
-    public int RecordOpened(string actionType, IEnumerable<(long SlotId, string SlotNo)> openedSlots, DoorOperator op)
+    public int RecordOpened(string actionType, IEnumerable<(long SlotId, string SlotNo)> openedSlots,
+        DoorOperator op, string? openedAtUtc = null)
     {
         if (_sink is null) return 0;
 
         var written = 0;
         foreach (var (_, slotNo) in openedSlots)
         {
-            var entry = NewEntry(actionType, op, slotNo, "成功", $"已打开 {slotNo}（仅门/锁状态）", null);
+            var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
+            var entry = NewEntry(actionType, op, slotNo, "成功", $"已打开 {slotNo}（仅门/锁状态）", null)
+                with { Ts = openTime, DoorOpenTs = openTime };
             if (_sink.TryWrite(entry).Success)
                 written++;
         }
         return written;
+    }
+
+    /// <summary>关门确认另记一条，关联同格的开门时刻；历史开门记录保持只增不改。</summary>
+    public bool RecordClosed(string slotNo, DoorOperator op, string? openedAtUtc = null,
+        bool isUncommanded = false)
+    {
+        if (_sink is null) return false;
+
+        var closeTime = OperationLogTime.UtcNowText();
+        var entry = NewEntry(OperationLogActionTypes.DoorClose, op, slotNo, "成功",
+            $"格口 {slotNo} 已确认关门", null, isUncommanded: isUncommanded)
+            with { Ts = closeTime, DoorOpenTs = openedAtUtc, DoorCloseTs = closeTime };
+        return _sink.TryWrite(entry).Success;
     }
 
     /// <summary>开锁失败的格口也留一条，带原因（§ 矩阵第 9 项）。</summary>
@@ -68,13 +84,15 @@ public sealed class SlotDoorActionLog
     /// 这里复用单格开门的类型并置 <c>is_uncommanded = 1</c>；
     /// 既然是非计划开门，没有操作人，故只留空角色与说明文案。
     /// </summary>
-    public bool RecordUncommandedOpen(string slotNo)
+    public bool RecordUncommandedOpen(string slotNo, string? openedAtUtc = null)
     {
         if (_sink is null) return false;
 
+        var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
         var entry = NewEntry(
             MhOpenSlot, new DoorOperator(""), slotNo, "成功",
-            "库内无开门指令但锁 DI 显示释锁（计划外开门）", null, isUncommanded: true);
+            "库内无开门指令但锁 DI 显示释锁（计划外开门）", null, isUncommanded: true)
+            with { Ts = openTime, DoorOpenTs = openTime };
 
         return _sink.TryWrite(entry).Success;
     }

@@ -177,7 +177,7 @@ public sealed class SqliteDb
         return result;
     }
 
-    private static void Bind(SqliteCommand cmd, string sql, IDictionary<string, object?> parameters)
+    internal static void Bind(SqliteCommand cmd, string sql, IDictionary<string, object?> parameters)
     {
         foreach (var (key, value) in parameters)
         {

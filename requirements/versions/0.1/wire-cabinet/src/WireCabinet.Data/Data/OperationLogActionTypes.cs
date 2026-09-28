@@ -14,6 +14,9 @@ public static class OperationLogActionTypes
     public const string OpIssueAvailableWire = "op_issue_available_wire";
     public const string OpTakeWire = "op_take_wire";
 
+    /// <summary>存取流程中的格口开门事件；业务动作仍单独记录。</summary>
+    public const string DoorOpen = "door_open";
+
     /// <summary>MH 打开单个格口（§3 矩阵第 5 项）。</summary>
     public const string MhOpenSlot = "mh_open_slot";
 
@@ -22,6 +25,9 @@ public static class OperationLogActionTypes
 
     /// <summary>维护人员试开（第 7 项，留痕）。</summary>
     public const string MaintTrialOpen = "maint_trial_open";
+
+    /// <summary>已打开的格口确认关门；与开门各留一条不可修改的事件。</summary>
+    public const string DoorClose = "door_close";
 
     /// <summary>
     /// 开门即清空（第 11 项）：格口无内部传感器，MH 开门关门后按账面无料处理。
@@ -50,9 +56,11 @@ public static class OperationLogActionTypes
         (OpReturnWire, "OP 归还旧焊丝"),
         (OpIssueAvailableWire, "OP 领用新焊丝"),
         (OpTakeWire, "OP 取出焊丝"),
+        (DoorOpen, "格口开门"),
         (MhOpenSlot, "MH 打开单个格口"),
         (MhOpenSlotsBatch, "MH 批量打开格口"),
         (MaintTrialOpen, "维护试开格口"),
+        (DoorClose, "格口关门"),
         (MhAssumeEmpty, "开门即清空"),
         (AgvMove, "AGV 控车"),
         (AgvCharge, "AGV 自动回充"),

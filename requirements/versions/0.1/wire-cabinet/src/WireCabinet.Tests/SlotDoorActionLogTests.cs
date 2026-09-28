@@ -53,6 +53,26 @@ public class SlotDoorActionLogTests : IDisposable
         Assert.Equal("1001", row["operator_id"]);
         Assert.Equal("张三", row["operator_name"]);
         Assert.Equal("A班", row["operator_team"]);
+        Assert.False(string.IsNullOrWhiteSpace(row["door_open_ts"]?.ToString()));
+        Assert.Null(row["door_close_ts"]);
+    }
+
+    [Fact]
+    public void Close_AppendsSeparateRecordWithBothDoorTimes()
+    {
+        var (db, _, log) = NewLog();
+        const string openedAt = "2026-09-22 09:19:58";
+        var op = DoorOperator.Mh("1001", "张三", "A班");
+        Assert.Equal(1, log.RecordOpened(SlotDoorActionLog.MhOpenSlot, [(5, "F-B02")], op, openedAt));
+        Assert.True(log.RecordClosed("F-B02", op, openedAt));
+
+        var rows = Rows(db);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(openedAt, rows[0]["door_open_ts"]);
+        Assert.Equal("door_close", rows[1]["action_type"]);
+        Assert.Equal(openedAt, rows[1]["door_open_ts"]);
+        Assert.False(string.IsNullOrWhiteSpace(rows[1]["door_close_ts"]?.ToString()));
+        Assert.Equal("1001", rows[1]["operator_id"]);
     }
 
     /// <summary>§ 矩阵第 6 项：批量开门**每个格口各一条**，条数与被打开的格口数一致。</summary>

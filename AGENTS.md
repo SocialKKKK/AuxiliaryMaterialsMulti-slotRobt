@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test src/WireCabinet.Tests/WireCabinet.Tests.csproj   # 期望 156 全通过
+dotnet test src/WireCabinet.Tests/WireCabinet.Tests.csproj   # 期望 163 全通过
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -41,11 +41,11 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 
 ## 当前状态
 
-- `main` 已含 0.2 全部实现（相对 0.1 基线约 30 个提交）。测试 156/156，构建 0 警告。
+- `main` 已含 0.2 实现。测试 163/163，构建 0 警告；开门与关门分别追加事件。
 - 覆盖矩阵 12 项全部落地。**已实机核对**（截图或查库）：记录页渲染、按批号追溯、
   批量开门的记录条数、待补偿人工重试、MH 操作人姓名解析、时区显示、静置不刷记录。
   **只有测试覆盖**：维护试开、无指令开门、开门即清空、AGV 六条命令的正向路径、MES 真库。
-- **现场联调未做**；MES Oracle 真库路径从未执行过（全部验证基于 SQLite mock）—— 这是最大风险。
+- **现场联调未做**；MES Oracle 真库路径从未执行过（全部验证基于 SQLite mock）—— 这是最大风险。共享 `appsettings.json` 不含现场凭据；部署须保留现场 `appsettings.Local.json`。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
 ## 未决 / 已知限制

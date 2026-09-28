@@ -13,14 +13,18 @@ namespace WireCabinet.Slots;
 public sealed class UncommandedOpenTracker
 {
     private readonly HashSet<long> _reported = new();
+    public IReadOnlyList<long> LastRecovered { get; private set; } = [];
 
     /// <summary>
     /// 传入本轮处于「计划外释锁」的格口集合，返回**首次**出现的那些（需要写记录的）。
-    /// 同时把已恢复正常的格口忘掉——集合里没有的即视为已恢复。
+    /// 只有已确认不再释锁的格口才忘掉；本轮 DI 未读到的格口仍保持跟踪。
     /// </summary>
-    public IReadOnlyList<long> FilterNew(IReadOnlyCollection<long> currentlyUncommanded)
+    public IReadOnlyList<long> FilterNew(IReadOnlyCollection<long> currentlyUncommanded,
+        IReadOnlyCollection<long>? unknownSlotIds = null)
     {
-        _reported.IntersectWith(currentlyUncommanded);
+        var unknown = unknownSlotIds is null ? [] : new HashSet<long>(unknownSlotIds);
+        LastRecovered = _reported.Except(currentlyUncommanded).Except(unknown).ToArray();
+        _reported.IntersectWith(currentlyUncommanded.Concat(unknown));
 
         var fresh = new List<long>();
         foreach (var slotId in currentlyUncommanded)
@@ -30,6 +34,8 @@ public sealed class UncommandedOpenTracker
         }
         return fresh;
     }
+
+    public void SuspendObservation() => LastRecovered = [];
 
     /// <summary>在跟踪中的格口数，供测试与排障。</summary>
     public int TrackedCount => _reported.Count;

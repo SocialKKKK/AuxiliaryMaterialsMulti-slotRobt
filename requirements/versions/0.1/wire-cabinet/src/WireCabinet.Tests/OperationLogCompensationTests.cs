@@ -84,6 +84,46 @@ public class OperationLogCompensationTests : IDisposable
         Assert.Empty(sink.ListPending());
     }
 
+    [Fact]
+    public void Retry_KeepsOriginalActionTime_InsteadOfRetryTime()
+    {
+        var (db, sink) = NewSink();
+        BreakRecordTable(db);
+
+        const string occurredAt = "2026-09-22 09:19:58";
+        var entry = Entry("LOT-TIME") with { Ts = occurredAt };
+        Assert.True(sink.TryWrite(entry).Queued);
+
+        RestoreRecordTable(db);
+        Assert.Equal(1, sink.RetryPendingBatch());
+
+        var row = Assert.Single(db.Query("SELECT ts FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.Equal(occurredAt, row["ts"]);
+    }
+
+    [Fact]
+    public void Retry_WhenCompletionMarkerFails_DoesNotInsertDuplicate()
+    {
+        var (db, sink) = NewSink();
+        BreakRecordTable(db);
+        Assert.True(sink.TryWrite(Entry("LOT-ATOMIC")).Queued);
+        var id = sink.ListPending().Single().Id;
+        RestoreRecordTable(db);
+
+        // 故障发生在主表 INSERT 之后的状态更新；事务应把 INSERT 一并回滚。
+        db.Execute("""
+            CREATE TRIGGER fail_pending_complete BEFORE UPDATE OF status ON operation_log_pending
+            WHEN NEW.status = 'success' BEGIN SELECT RAISE(ABORT, 'completion fault'); END;
+            """, new Dictionary<string, object?>());
+        Assert.False(sink.RetryPendingRow(id).Success);
+        Assert.Empty(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+
+        db.Execute("DROP TRIGGER fail_pending_complete;", new Dictionary<string, object?>());
+        Assert.True(sink.RetryPendingRow(id, manual: true).Success);
+        Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.Empty(sink.ListPending());
+    }
+
     /// <summary>
     /// 关键回归：重试失败**不得**再入队。
     /// 若重试路径复用业务路径的 TryWrite，每重试一次队列就长一条，越滚越大。

@@ -40,8 +40,9 @@ public sealed class OperationLogPendingStore
     public OperationLogPendingStore(IAppDb appDb) => _appDb = appDb;
 
     /// <summary>入队一条待补偿。retry_count=0 且 next_retry_at 为空 ⇒ 立即可被重试。</summary>
-    public void Enqueue(OperationLogEntry entry, string? error) =>
-        _appDb.RunRaw(
+    public void Enqueue(OperationLogEntry entry, string? error)
+    {
+        var result = _appDb.RunRaw(
             """
             INSERT INTO operation_log_pending (entry_json, status, retry_count, last_error)
             VALUES (:entry_json, 'pending', 0, :last_error);
@@ -52,6 +53,9 @@ public sealed class OperationLogPendingStore
                 ["last_error"] = error,
             },
             isWrite: true);
+        if (result.HasError || result.RowsAffected != 1)
+            throw new InvalidOperationException(result.Error ?? "待补偿记录未保存（影响行数不是 1）。");
+    }
 
     public OperationLogPendingRow? TryGet(long id) =>
         Read("WHERE id = :id;", new Dictionary<string, object?> { ["id"] = id }).FirstOrDefault();

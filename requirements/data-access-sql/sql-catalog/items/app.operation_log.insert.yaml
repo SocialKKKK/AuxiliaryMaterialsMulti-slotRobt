@@ -9,14 +9,14 @@ business_meaning: >-
   并且必须同时检查 rows_affected——影响 0 行意味记录没写进去，同样按失败处理。
 sql: |
   INSERT INTO app_operation_log (
-      operator_id, operator_name, operator_team, operator_role, action_type,
+      ts, operator_id, operator_name, operator_team, operator_role, action_type,
       slot_no, lot_no, wire_spec, eqp_no, product_lot_no,
       qty, remain_qty, station, result, message,
       mes_result, lock_result, error_info,
       door_open_ts, door_close_ts, is_cleared, is_uncommanded,
       flow_id, node_id
   ) VALUES (
-      :operator_id, :operator_name, :operator_team, :operator_role, :action_type,
+      :ts, :operator_id, :operator_name, :operator_team, :operator_role, :action_type,
       :slot_no, :lot_no, :wire_spec, :eqp_no, :product_lot_no,
       :qty, :remain_qty, :station, :result, :message,
       :mes_result, :lock_result, :error_info,
@@ -24,6 +24,7 @@ sql: |
       :flow_id, :node_id
   );
 params:
+  - name: ts
   - name: operator_id
   - name: operator_name
   - name: operator_team

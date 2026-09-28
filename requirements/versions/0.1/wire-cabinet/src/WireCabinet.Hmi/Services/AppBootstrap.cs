@@ -157,5 +157,5 @@ public sealed class UnconfiguredMesGateway : IMesGateway
 {
     public MesMode Mode => MesMode.Oracle;
     public DbResult Run(SqlCatalogItem item, IDictionary<string, object?> parameters) =>
-        DbResult.Failure(item.OracleSql ?? item.Sql, "MES 未配置：请在 appsettings.json 填写 Mes:ConnectionString。");
+        DbResult.Failure(item.OracleSql ?? item.Sql, "MES 未配置：请在车载电脑的 appsettings.Local.json 填写 Mes:ConnectionString。");
 }

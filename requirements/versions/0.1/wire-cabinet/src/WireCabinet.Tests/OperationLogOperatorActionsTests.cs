@@ -80,23 +80,30 @@ public class OperationLogOperatorActionsTests : IDisposable
     };
 
     [Fact]
-    public void OneReturnAndIssueRun_ProducesExactlyThreeRecords()
+    public void OneReturnAndIssueRun_ProducesThreeBusinessRecordsAndFourDoorEvents()
     {
         var rows = RunOperatorFlowAndReadRecords();
 
-        Assert.Equal(3, rows.Count);
+        Assert.Equal(7, rows.Count);
         Assert.Equal(
-            new[] { "op_return_wire", "op_issue_available_wire", "op_take_wire" },
+            new[] { "op_return_wire", "door_open", "door_close", "op_issue_available_wire", "door_open", "door_close", "op_take_wire" },
             rows.Select(r => r["action_type"]?.ToString()).ToArray());
+        Assert.Equal(rows[1]["slot_no"], rows[2]["slot_no"]);
+        Assert.Equal(rows[4]["slot_no"], rows[5]["slot_no"]);
+        Assert.Equal(rows[1]["door_open_ts"], rows[2]["door_open_ts"]);
+        Assert.Equal(rows[4]["door_open_ts"], rows[5]["door_open_ts"]);
+        Assert.Null(rows[1]["door_close_ts"]);
+        Assert.False(string.IsNullOrWhiteSpace(rows[5]["door_close_ts"]?.ToString()));
     }
 
     [Fact]
     public void Records_CarryOperatorAndBusinessFields()
     {
         var rows = RunOperatorFlowAndReadRecords();
-        var byAction = rows.ToDictionary(r => r["action_type"]!.ToString()!, r => r);
+        var byAction = rows.Where(r => r["action_type"]?.ToString()?.StartsWith("op_") == true)
+            .ToDictionary(r => r["action_type"]!.ToString()!, r => r);
 
-        foreach (var row in rows)
+        foreach (var row in byAction.Values)
         {
             Assert.Equal("OP", row["operator_role"]);
             Assert.Equal("1001", row["operator_id"]);
@@ -130,6 +137,10 @@ public class OperationLogOperatorActionsTests : IDisposable
 
         Assert.False(string.IsNullOrWhiteSpace(take["door_open_ts"]?.ToString()), "取出记录缺 door_open_ts。");
         Assert.False(string.IsNullOrWhiteSpace(take["door_close_ts"]?.ToString()), "取出记录缺 door_close_ts。");
+
+        // 库里的时间必须与 SQLite ts 同为 UTC 文本；否则页面的本地时区换算会原样透传。
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", take["door_open_ts"]!.ToString()!);
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", take["door_close_ts"]!.ToString()!);
 
         // 关门确认发生在开门之后
         var open = DateTime.Parse(take["door_open_ts"]!.ToString()!);

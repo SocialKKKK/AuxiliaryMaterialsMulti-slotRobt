@@ -86,7 +86,7 @@ public sealed class AgvServices : IDisposable
         IsConfigured = IsAgvConfigComplete(config);
         if (!IsConfigured)
         {
-            ConfigHint = "请在 appsettings.json 填写 AgvDispatch（BaseUrl、Username、Password、DefaultDeviceKey）。";
+            ConfigHint = "请在车载电脑的 appsettings.Local.json 填写 AgvDispatch（BaseUrl、Username、Password、DefaultDeviceKey）。";
             return;
         }
 

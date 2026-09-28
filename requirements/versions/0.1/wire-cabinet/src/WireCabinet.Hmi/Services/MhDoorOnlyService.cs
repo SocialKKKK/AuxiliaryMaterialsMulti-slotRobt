@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using WireCabinet.Data;
 using WireCabinet.Slots;
 
 namespace WireCabinet.Hmi.Services;
@@ -17,6 +18,8 @@ public sealed class MhDoorOnlyService
     private readonly WireCabinet.Data.SqlCatalog _catalog;
     private readonly WireCabinet.Data.IWireDiscoEqpSync? _discoSync;
     private readonly HashSet<long> _openedInSession = new();
+    private readonly Dictionary<long, (string SlotNo, DoorOperator Operator, string OpenedAtUtc)> _doorOpenLogs = new();
+    private readonly Dictionary<string, string> _uncommandedOpenTimes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _trackGate = new();
 
     public event EventHandler<string>? SessionAutoEnded;
@@ -85,8 +88,38 @@ public sealed class MhDoorOnlyService
         lock (_trackGate) _openedInSession.Remove(slotId);
     }
 
-    public async Task NotifySlotsClosedAsync(IReadOnlyList<long> slotIds, CancellationToken ct = default)
+    private void RecordDoorOpened(string actionType, OpenSlotResult result, DoorOperator op)
     {
+        if (!result.Success) return;
+        var openedAt = result.OpenedAtUtc ?? OperationLogTime.UtcNowText();
+        lock (_trackGate)
+            _doorOpenLogs[result.SlotId] = (result.SlotNo, op, openedAt);
+        _doorLog.RecordOpened(actionType, [(result.SlotId, result.SlotNo)], op, openedAt);
+    }
+
+    private bool RecordDoorClosedIfTracked(long slotId)
+    {
+        (string SlotNo, DoorOperator Operator, string OpenedAtUtc) opened;
+        lock (_trackGate)
+        {
+            if (!_doorOpenLogs.Remove(slotId, out opened)) return false;
+        }
+        _doorLog.RecordClosed(opened.SlotNo, opened.Operator, opened.OpenedAtUtc);
+        return true;
+    }
+
+    public async Task NotifySlotsClosedAsync(IReadOnlyList<long> slotIds, CancellationToken ct = default,
+        bool reconciledByHardware = false)
+    {
+        foreach (var id in slotIds)
+        {
+            if (RecordDoorClosedIfTracked(id) || !reconciledByHardware) continue;
+            // 重启后内存中的开门关联已丢失；DI 确认锁闭时仍须留一条关门事件。
+            var slot = await _slots.GetSlotStatusAsync(id, ct);
+            if (slot is not null)
+                _doorLog.RecordClosed(slot.SlotNo, new DoorOperator(""));
+        }
+
         List<long> toAssumeEmpty;
         lock (_trackGate)
         {
@@ -139,7 +172,22 @@ public sealed class MhDoorOnlyService
     /// <summary>
     /// 无指令开门记录（§ 矩阵第 10 项）。由门态巡检发现「库内无开门指令而 DI 显示释锁」后调用。
     /// </summary>
-    public bool RecordUncommandedOpen(string slotNo) => _doorLog.RecordUncommandedOpen(slotNo);
+    public bool RecordUncommandedOpen(string slotNo)
+    {
+        var openedAt = OperationLogTime.UtcNowText();
+        lock (_trackGate) _uncommandedOpenTimes[slotNo] = openedAt;
+        return _doorLog.RecordUncommandedOpen(slotNo, openedAt);
+    }
+
+    public bool RecordUncommandedClosed(string slotNo)
+    {
+        string? openedAt;
+        lock (_trackGate)
+        {
+            _uncommandedOpenTimes.Remove(slotNo, out openedAt);
+        }
+        return _doorLog.RecordClosed(slotNo, new DoorOperator(""), openedAt, isUncommanded: true);
+    }
 
     /// <summary>本会话打开格口均已关库后自动结束 mh_door_only 会话。</summary>
     public bool TryAutoEndDoorOnlySession()
@@ -222,7 +270,7 @@ public sealed class MhDoorOnlyService
 
         // 试开也要留痕（§ 矩阵第 7 项）。维护界面没有工号输入，故只记角色。
         if (result.Success)
-            _doorLog.RecordOpened(SlotDoorActionLog.MaintTrialOpen, [(result.SlotId, result.SlotNo)], DoorOperator.Maint());
+            RecordDoorOpened(SlotDoorActionLog.MaintTrialOpen, result, DoorOperator.Maint());
         else
             _doorLog.RecordFailed(SlotDoorActionLog.MaintTrialOpen, dto.SlotNo, result.Message, DoorOperator.Maint());
 
@@ -256,10 +304,10 @@ public sealed class MhDoorOnlyService
 
         if (result.Success)
         {
+            // 单格开门一条（§ 矩阵第 5 项）；记录失败不影响开门
+            RecordDoorOpened(SlotDoorActionLog.MhOpenSlot, result, CurrentOperator);
             TrackOpenedSlot(result.SlotId);
             NotifySlotStateChanged();
-            // 单格开门一条（§ 矩阵第 5 项）；记录失败不影响开门
-            _doorLog.RecordOpened(SlotDoorActionLog.MhOpenSlot, [(result.SlotId, result.SlotNo)], CurrentOperator);
         }
         else
         {
@@ -296,6 +344,8 @@ public sealed class MhDoorOnlyService
     public async Task<(bool Ok, string Message)> CloseSingleAsync(long slotId, CancellationToken ct = default)
     {
         var ok = await _slots.ConfirmDoorClosedAsync(slotId, ct);
+        if (ok)
+            await NotifySlotsClosedAsync([slotId], ct);
         return ok
             ? (true, $"格口 {slotId} 已确认关门（仅门/锁状态）。")
             : (false, "关门确认失败：锁反馈未闭合或格口不存在。");
@@ -317,17 +367,19 @@ public sealed class MhDoorOnlyService
             codes,
             new BatchOpenOptions { IntervalMs = 400, StopOnFailure = true },
             new OpenSlotRequest { Source = SessionFlowId, OperationLabel = operationLabel },
-            ct);
+            ct,
+            r =>
+            {
+                if (r.Success)
+                {
+                    RecordDoorOpened(SlotDoorActionLog.MhOpenSlotsBatch, r, CurrentOperator);
+                    TrackOpenedSlot(r.SlotId);
+                }
+                else if (!string.IsNullOrWhiteSpace(r.SlotNo))
+                    _doorLog.RecordFailed(SlotDoorActionLog.MhOpenSlotsBatch, r.SlotNo, r.Message, CurrentOperator);
+            });
 
         var opened = batch.Results.Count(r => r.Success);
-        foreach (var r in batch.Results.Where(r => r.Success))
-            TrackOpenedSlot(r.SlotId);
-
-        // 批量开门**按被打开的格口逐个计条**（§ 矩阵第 6 项：条数与实际开门数一致）
-        _doorLog.RecordOpened(
-            SlotDoorActionLog.MhOpenSlotsBatch,
-            batch.Results.Where(r => r.Success).Select(r => (r.SlotId, r.SlotNo)).ToList(),
-            CurrentOperator);
 
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)
@@ -373,14 +425,16 @@ public sealed class MhDoorOnlyService
             codes,
             new BatchOpenOptions { IntervalMs = 400, StopOnFailure = true },
             new OpenSlotRequest { Source = "maint_trial", OperationLabel = operationLabel },
-            ct);
+            ct,
+            r =>
+            {
+                if (r.Success)
+                    RecordDoorOpened(SlotDoorActionLog.MaintTrialOpen, r, DoorOperator.Maint());
+                else if (!string.IsNullOrWhiteSpace(r.SlotNo))
+                    _doorLog.RecordFailed(SlotDoorActionLog.MaintTrialOpen, r.SlotNo, r.Message, DoorOperator.Maint());
+            });
 
         var opened = batch.Results.Count(r => r.Success);
-        // 维护批量试开同样按格口逐个留痕（§ 矩阵第 7 项）
-        _doorLog.RecordOpened(
-            SlotDoorActionLog.MaintTrialOpen,
-            batch.Results.Where(r => r.Success).Select(r => (r.SlotId, r.SlotNo)).ToList(),
-            DoorOperator.Maint());
 
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)

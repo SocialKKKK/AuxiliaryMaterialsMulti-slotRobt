@@ -263,7 +263,8 @@ public partial class OperationLogView : UserControl
         };
         if (dialog.ShowDialog() != true) return;
 
-        var data = _query.ListForExport(_filter);
+        // 追溯视图展示的是全批号时间线；导出必须与眼前列表一致。
+        var data = _traceMode ? _query.Timeline(_traceLotNo) : _query.ListForExport(_filter);
         if (!ShowFailure(data, "导出"))
             return;
 
@@ -362,7 +363,7 @@ public partial class OperationLogView : UserControl
 
         var write = App.Bootstrap.OperationLog.TryWrite(entry);
         if (!write.Success)
-            StatusText.Text = $"{message}（留痕失败，已转待补偿：{write.Error}）";
+            StatusText.Text = $"{message}（留痕失败{(write.Queued ? "，已转待补偿" : "")}：{write.Error}）";
     }
 
     /// <summary>记录行（列绑定用，只放界面需要的显示值）。</summary>

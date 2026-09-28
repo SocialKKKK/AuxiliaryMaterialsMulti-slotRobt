@@ -144,6 +144,47 @@ public class OperationLogSinkTests : IDisposable
     }
 
     [Fact]
+    public void TryWrite_WhenPendingTableCannotBeWritten_DoesNotClaimItWasQueued()
+    {
+        var (db, _) = NewSink();
+        db.Execute("DROP TABLE app_operation_log;", new Dictionary<string, object?>());
+        var sink = new SqliteOperationLogSink(SqlCatalog.Load(),
+            new RejectPendingWrites(new SqliteAppDb(db)));
+
+        var result = sink.TryWrite(new OperationLogEntry { ActionType = "op_issue" });
+
+        Assert.False(result.Success);
+        Assert.False(result.Queued);
+        Assert.Contains("待补偿保存失败", result.Error);
+    }
+
+    [Fact]
+    public void TryWrite_WhenWarningSubscriberThrows_DoesNotBlockBusiness()
+    {
+        var (db, sink) = NewSink();
+        db.Execute("DROP TABLE app_operation_log;", new Dictionary<string, object?>());
+        var notified = false;
+        sink.WriteFailed += (_, _) => throw new InvalidOperationException("界面已关闭");
+        sink.WriteFailed += (_, _) => notified = true;
+
+        var result = sink.TryWrite(new OperationLogEntry { ActionType = "op_issue" });
+
+        Assert.False(result.Success);
+        Assert.True(result.Queued);
+        Assert.True(notified);
+    }
+
+    private sealed class RejectPendingWrites(IAppDb inner) : IAppDb
+    {
+        public DbResult Run(SqlCatalogItem item, IDictionary<string, object?> parameters) => inner.Run(item, parameters);
+
+        public DbResult RunRaw(string sql, IDictionary<string, object?> parameters, bool isWrite) =>
+            isWrite && sql.Contains("INSERT INTO operation_log_pending", StringComparison.Ordinal)
+                ? DbResult.Failure(sql, "database is read-only")
+                : inner.RunRaw(sql, parameters, isWrite);
+    }
+
+    [Fact]
     public void NullSink_IsNoOp()
     {
         IOperationLogSink sink = new NullOperationLogSink();

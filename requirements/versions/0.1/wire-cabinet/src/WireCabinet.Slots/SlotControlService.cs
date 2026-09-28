@@ -40,7 +40,8 @@ public sealed class SlotControlService : ISlotControlService
         IReadOnlyList<string> slotCodes,
         BatchOpenOptions options,
         OpenSlotRequest template,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<OpenSlotResult>? onResult = null)
     {
         var label = template.OperationLabel ?? "批量开门";
         if (!_doorOps.TryEnter(label, out var busyMessage))
@@ -66,6 +67,12 @@ public sealed class SlotControlService : ISlotControlService
                     OperationLabel = template.OperationLabel
                 }, ct);
                 results.Add(r);
+                try { onResult?.Invoke(r); }
+                catch (Exception ex)
+                {
+                    // 记录回调故障不得中止已经开始的开锁批次。
+                    System.Diagnostics.Trace.TraceError($"[SlotControl] 开门结果回调失败：{ex}");
+                }
                 if (!r.Success && options.StopOnFailure)
                     return new BatchOpenResult { Results = results, CompletedAll = false };
                 if (options.IntervalMs > 0)
@@ -100,7 +107,11 @@ public sealed class SlotControlService : ISlotControlService
             }
 
             await UpdateDoorStateAsync(slot.Value.Id, open: true, ct);
-            return new OpenSlotResult { Success = true, SlotId = slot.Value.Id, SlotNo = slot.Value.No, Message = "开锁指令已下发。" };
+            return new OpenSlotResult
+            {
+                Success = true, SlotId = slot.Value.Id, SlotNo = slot.Value.No,
+                Message = "开锁指令已下发。", OpenedAtUtc = OperationLogTime.UtcNowText()
+            };
         }
         finally
         {
@@ -146,7 +157,7 @@ public sealed class SlotControlService : ISlotControlService
         if (_hardware.IsConfigured)
         {
             var closed = await _hardware.ReadLockClosedAsync(row.Value.No, ct);
-            if (closed == false) return false;
+            if (closed != true) return false;
         }
 
         await UpdateDoorStateAsync(slotId, open: false, ct);

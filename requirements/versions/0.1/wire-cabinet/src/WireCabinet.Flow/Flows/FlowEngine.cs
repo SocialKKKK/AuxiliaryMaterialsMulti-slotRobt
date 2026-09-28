@@ -126,7 +126,11 @@ public sealed class FlowEngine
         // （closeReturnSlotDoor / closeIssueSlotDoor 是 user_input，不是 slot_close 节点），
         // 所以按节点声明的 closed 输出识别，而不是靠节点名。
         if (node.Outputs.Any(o => string.Equals(o.Name, DoorClosedOutput, StringComparison.OrdinalIgnoreCase)))
-            ctx.Runtime[DoorCloseTsKey] = NowIso();
+        {
+            var closedAt = NowUtcText();
+            ctx.Runtime[DoorCloseTsKey] = closedAt;
+            LogDoorEvent(node, FlowDoorSlotNo(node), closedAt, opening: false);
+        }
 
         var (next, findings) = Route(node, "success");
         return Build(node, "success", next, "用户输入", sb.ToString(), findings);
@@ -339,7 +343,11 @@ public sealed class FlowEngine
             if (ok)
                 Context!.NodeResults[node.Id] = new(StringComparer.OrdinalIgnoreCase) { ["opened_slot_id"] = slotId };
             if (ok)
-                Context!.Runtime[DoorOpenTsKey] = NowIso();
+            {
+                var openedAt = NowUtcText();
+                Context!.Runtime[DoorOpenTsKey] = openedAt;
+                LogDoorEvent(node, FlowDoorSlotNo(node), openedAt, opening: true);
+            }
         }
         else
         {
@@ -402,7 +410,12 @@ public sealed class FlowEngine
         var findings = new List<Finding>();
         var closed = _svc.Slot.CloseNextOpenDoor();
         if (closed is not null)
+        {
             Context!.Runtime["last_closed_slot_id"] = closed.Value.ToString(CultureInfo.InvariantCulture);
+            var closedAt = NowUtcText();
+            Context.Runtime[DoorCloseTsKey] = closedAt;
+            LogDoorEvent(node, FlowDoorSlotNo(node), closedAt, opening: false);
+        }
 
         var (next, rf) = Route(node, "success");
         findings.AddRange(rf);
@@ -492,6 +505,44 @@ public sealed class FlowEngine
     private const string DoorOpenTsKey = "door_open_ts";
     private const string DoorCloseTsKey = "door_close_ts";
     private const string DoorClosedOutput = "closed";
+
+    private string? FlowDoorSlotNo(FlowNode node) => node.Id switch
+    {
+        "openReturnSlot" or "closeReturnSlotDoor" => Field("findReturnSlot", "return_slot_no"),
+        "openIssueSlot" or "closeIssueSlotDoor" => Field("queryMatchedAvailableWire", "slot_no"),
+        "openAvailableSlot" or "closeAvailableSlotDoor" => Field("checkAvailableSlot", "slot_no"),
+        _ => null
+    };
+
+    private void LogDoorEvent(FlowNode node, string? slotNo, string eventAt, bool opening)
+    {
+        if (_svc.OperationLog is not { } sink || string.IsNullOrWhiteSpace(slotNo)) return;
+        var opFlow = Flow!.FlowId.StartsWith("operator_", StringComparison.OrdinalIgnoreCase);
+        var lotNo = node.Id.Contains("Return", StringComparison.OrdinalIgnoreCase)
+            ? Field("inputReturnedWireLotNo", "returned_wire_lot_no")
+            : opFlow ? Field("queryMatchedAvailableWire", "matched_available_wire_lot_no")
+                : Field("inputAvailableWireLotNo", "available_wire_lot_no");
+        var entry = new OperationLogEntry
+        {
+            Ts = eventAt,
+            ActionType = opening ? OperationLogActionTypes.DoorOpen : OperationLogActionTypes.DoorClose,
+            FlowId = Flow.FlowId,
+            NodeId = node.Id,
+            SlotNo = slotNo,
+            LotNo = lotNo,
+            OperatorRole = opFlow ? "OP" : "MH",
+            OperatorId = opFlow ? Field("inputOperatorWorkInfo", "operator_id") : RuntimeValue(OperatorIdKey),
+            OperatorName = opFlow ? Field("queryOPById", "operator_name") : RuntimeValue(OperatorNameKey),
+            OperatorTeam = opFlow ? Field("inputOperatorWorkInfo", "work_group") : RuntimeValue(OperatorTeamKey),
+            DoorOpenTs = opening ? eventAt : RuntimeValue(DoorOpenTsKey),
+            DoorCloseTs = opening ? null : eventAt,
+            Result = "成功",
+            Message = opening ? $"格口 {slotNo} 已开门" : $"格口 {slotNo} 已确认关门"
+        };
+        var write = sink.TryWrite(entry);
+        if (!write.Success)
+            System.Diagnostics.Trace.TraceWarning($"格口{(opening ? "开门" : "关门")}记录写入失败：{write.Error}");
+    }
 
     /// <summary>
     /// 操作人信息在运行期上下文（FlowRunContext.Runtime）里的键。
@@ -610,7 +661,7 @@ public sealed class FlowEngine
     {
         var write = sink.TryWrite(entry);
         if (!write.Success)
-            findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次{what}，已转待补偿）：{write.Error}"));
+            findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次{what}{(write.Queued ? "，已转待补偿" : "")}）：{write.Error}"));
     }
 
     /// <summary>取某节点结果里的字段（节点未执行或字段缺失时为 null）。</summary>
@@ -625,8 +676,8 @@ public sealed class FlowEngine
     private string? RuntimeValue(string key) =>
         Context!.Runtime.TryGetValue(key, out var value) ? value : null;
 
-    private static string NowIso() =>
-        DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+    private static string NowUtcText() =>
+        OperationLogTime.UtcNowText();
 
     private static string? ParamText(IDictionary<string, object?> parameters, string name) =>
         parameters.TryGetValue(name, out var v) ? v?.ToString() : null;

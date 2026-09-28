@@ -18,6 +18,9 @@ public static class OperationLogTime
     /// <summary>库里时间列的格式（无偏移量）。</summary>
     public const string Format = "yyyy-MM-dd HH:mm:ss";
 
+    /// <summary>写入动作发生时刻，精度与 SQLite 默认时间一致。</summary>
+    public static string UtcNowText() => DateTime.UtcNow.ToString(Format, System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>
     /// 库里的 UTC 文本 → 该时区的本地文本，供界面显示与导出。
     /// 空值返回 null；格式不认识时**原样返回**（宁可显示原始值，也不要在展示层抛异常）。
@@ -59,9 +62,17 @@ public static class OperationLogTime
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
 
-        return DateTime.TryParseExact(text.Trim(), Format, null,
-            System.Globalization.DateTimeStyles.None, out var parsed)
-            ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc)
-            : null;
+        var trimmed = text.Trim();
+        if (DateTime.TryParseExact(trimmed, Format, null,
+                System.Globalization.DateTimeStyles.None, out var parsed))
+            return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+
+        // 早期取出记录用 DateTime.UtcNow.ToString("o") 写门时间；兼容已有的带偏移 ISO 文本。
+        if (trimmed.Contains('T')
+            && DateTimeOffset.TryParse(trimmed, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var offset))
+            return offset.UtcDateTime;
+
+        return null;
     }
 }

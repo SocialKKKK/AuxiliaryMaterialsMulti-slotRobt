@@ -346,7 +346,7 @@
                     </StackPanel>
 
                     <Button x:Name="SubmitReturnBtn" Grid.Row="3" Content="提交归还焊丝"
-                            Style="{StaticResource OpCompactPrimaryButton}"
+                            Style="{StaticResource OpCompactPrimaryButton}" Height="44" MinHeight="44"
                             HorizontalAlignment="Stretch" IsEnabled="False" Click="SubmitReturnBtn_Click"/>
                 </Grid>
             </Border>
@@ -431,7 +431,7 @@
                     </StackPanel>
 
                     <Button x:Name="SubmitIssueBtn" Grid.Row="6" Content="提交领用焊丝"
-                            Style="{StaticResource OpCompactPrimaryButton}"
+                            Style="{StaticResource OpCompactPrimaryButton}" Height="44" MinHeight="44"
                             HorizontalAlignment="Stretch" IsEnabled="False" Click="SubmitIssueBtn_Click"/>
                 </Grid>
             </Border>

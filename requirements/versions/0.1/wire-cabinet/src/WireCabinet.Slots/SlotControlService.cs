@@ -228,16 +228,27 @@ public sealed class SlotControlService : ISlotControlService
 
     public async Task<DoorStateInput> GetDoorStateForAgvAsync(CancellationToken ct = default)
     {
-        var open = await ListOpenInterlockSlotNosAsync(ct).ConfigureAwait(false);
-        var anyOpen = open.Count > 0;
+        var (allSlots, snapshots) = await ReadInterlockStateAsync(ct).ConfigureAwait(false);
+        var configured = _hardware.IsConfigured;
+        var anyOpen = allSlots.Any(s => SlotInterlockHelper.IsSlotOpenForInterlock(s, snapshots, configured));
         return new DoorStateInput
         {
-            AllDoorsClosed = !anyOpen && !HasUnlockInProgress(),
+            AllDoorsClosed = allSlots.Count > 0 && !anyOpen && !HasUnlockInProgress()
+                && (!configured || allSlots.Any(s => s.IoWired) || snapshots.Values.Any(s => s.Wired))
+                && allSlots.All(s => SlotInterlockHelper.IsSlotClosedForInterlock(s, snapshots, configured)),
             AnyDoorOpen = anyOpen
         };
     }
 
     public async Task<IReadOnlyList<string>> ListOpenInterlockSlotNosAsync(CancellationToken ct = default)
+    {
+        var (allSlots, snapshots) = await ReadInterlockStateAsync(ct).ConfigureAwait(false);
+        return allSlots.Where(s => SlotInterlockHelper.IsSlotOpenForInterlock(s, snapshots, _hardware.IsConfigured))
+            .Select(s => s.SlotNo).ToList();
+    }
+
+    private async Task<(IReadOnlyList<SlotStatusDto> Slots, IReadOnlyDictionary<string, SlotHardwareSnapshot> Snapshots)>
+        ReadInterlockStateAsync(CancellationToken ct)
     {
         var allSlots = await ListSlotsAsync(new SlotListFilter { EnabledOnly = false }, ct).ConfigureAwait(false);
 
@@ -246,14 +257,7 @@ public sealed class SlotControlService : ISlotControlService
         if (_hardware.IsConfigured)
             snapshots = await _hardware.ReadAllWiredSnapshotsAsync(ct).ConfigureAwait(false);
 
-        var open = new List<string>();
-        foreach (var slot in allSlots)
-        {
-            if (SlotInterlockHelper.IsSlotOpenForInterlock(slot, snapshots, _hardware.IsConfigured))
-                open.Add(slot.SlotNo);
-        }
-
-        return open;
+        return (allSlots, snapshots);
     }
 
     private async Task UpdateDoorStateAsync(long slotId, bool open, CancellationToken ct)

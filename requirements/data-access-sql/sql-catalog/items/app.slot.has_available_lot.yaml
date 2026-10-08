@@ -1,0 +1,11 @@
+id: app.slot.has_available_lot
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: 判断批号是否仍在柜内可用库存中；读取失败不得当作不存在。
+sql: |
+  SELECT 1 AS present FROM app_slot
+  WHERE biz_state = 'available_wire' AND wire_lot_no = :lot
+  LIMIT 1;
+params:
+  - name: lot

@@ -60,7 +60,9 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
         if (string.IsNullOrEmpty(lot))
             return new WireDiscoSyncResult(false, false, "批号为空。");
 
-        if (!IsLotInCabinetAsAvailable(lot))
+        if (!TryReadCabinetPresence(lot, out var present, out var readError))
+            return FailInline(lot, WireMesDiscoAction.Set, kind, readError!);
+        if (!present)
             return new WireDiscoSyncResult(false, false, $"批号 {lot} 不在柜内可用焊丝状态，跳过 SET。");
 
         if (IsAlreadySetInMes(lot))
@@ -92,25 +94,17 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
         if (string.IsNullOrEmpty(lot))
             return new WireDiscoSyncResult(false, false, "批号为空。");
 
-        if (IsLotStillInCabinetAsAvailable(lot))
+        if (!TryReadCabinetPresence(lot, out var present, out var readError))
+            return FailInline(lot, WireMesDiscoAction.Clear, kind, readError!);
+        if (present)
             return new WireDiscoSyncResult(false, false, $"批号 {lot} 仍在柜内，跳过 CLEAR。");
 
-        if (IsAlreadyClearInMes(lot))
-        {
-            _pending.MarkSuccess(lot, WireMesDiscoAction.Clear);
-            return new WireDiscoSyncResult(true, false, "MES 已是 NULL。");
-        }
-
-        var item = ResolveMesItem("mes.wire.clear_disco_eqp_no");
-        if (item is null)
-            return FailInline(lot, WireMesDiscoAction.Clear, kind, "未找到 mes.wire.clear_disco_eqp_no SQL 条目。");
-
-        var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        if (MesWriteFailed(result))
-            return FailInline(lot, WireMesDiscoAction.Clear, kind, result.Error ?? "MES CLEAR 未生效（影响 0 行）。");
+        var result = ClearMesLot(lot);
+        if (!result.Success)
+            return FailInline(lot, WireMesDiscoAction.Clear, kind, result.UserMessage);
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Clear);
-        return new WireDiscoSyncResult(true, false, "MES CLEAR 成功。");
+        return result;
     }
 
     public string? TryGetAvailableWireLot(object? slotId)
@@ -161,10 +155,6 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
 
         WireDiscoSyncResult result = row.Action switch
         {
-            WireMesDiscoAction.Set when !IsLotInCabinetAsAvailable(row.WireLotNo) =>
-                new WireDiscoSyncResult(false, false, "柜内状态与 SET 不一致，跳过重试。"),
-            WireMesDiscoAction.Clear when IsLotStillInCabinetAsAvailable(row.WireLotNo) =>
-                new WireDiscoSyncResult(false, false, "柜内仍有该批号，跳过 CLEAR 重试。"),
             WireMesDiscoAction.Set => TryMarkInCabinet(row.WireLotNo, row.FailureKind),
             _ => TryClearFromCabinet(row.WireLotNo, row.FailureKind)
         };
@@ -217,13 +207,11 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
     public WireDiscoSyncResult ManualClear(string wireLotNo)
     {
         var lot = wireLotNo.Trim();
-        var item = ResolveMesItem("mes.wire.clear_disco_eqp_no");
-        if (item is null)
-            return new WireDiscoSyncResult(false, false, "SQL 条目缺失。");
-
-        var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        if (MesWriteFailed(result))
-            return new WireDiscoSyncResult(false, false, result.Error ?? "CLEAR 未生效（影响 0 行）。");
+        if (string.IsNullOrEmpty(lot))
+            return new WireDiscoSyncResult(false, false, "批号为空。");
+        var result = ClearMesLot(lot);
+        if (!result.Success)
+            return result;
 
         _pending.MarkSuccess(lot, WireMesDiscoAction.Clear);
         _audit?.Append("manual_clear", lot, "DISCOEQPNO=NULL");
@@ -260,16 +248,21 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
         return _catalog.FindForMode(formalId, _mes.Mode);
     }
 
-    private bool IsLotInCabinetAsAvailable(string lot)
+    private bool TryReadCabinetPresence(string lot, out bool present, out string? error)
     {
-        var result = _appDb.RunRaw(
-            "SELECT 1 FROM app_slot WHERE biz_state = 'available_wire' AND wire_lot_no = :lot LIMIT 1;",
-            new Dictionary<string, object?> { ["lot"] = lot },
-            isWrite: false);
-        return result.Rows.Count > 0;
+        present = false;
+        var item = _catalog.Find("app.slot.has_available_lot");
+        if (item is null)
+        {
+            error = "柜内库存查询 SQL 条目缺失，禁止同步 MES。";
+            return false;
+        }
+        var result = _appDb.Run(item, new Dictionary<string, object?> { ["lot"] = lot });
+        error = result.HasError ? $"柜内库存读取失败，禁止同步 MES：{result.Error}" : null;
+        if (result.HasError) return false;
+        present = result.Rows.Count > 0;
+        return true;
     }
-
-    private bool IsLotStillInCabinetAsAvailable(string lot) => IsLotInCabinetAsAvailable(lot);
 
     private bool IsAlreadySetInMes(string lot)
     {
@@ -281,13 +274,41 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
                && string.Equals(current, DiscoEqpNo, StringComparison.Ordinal);
     }
 
-    private bool IsAlreadyClearInMes(string lot)
+    private WireDiscoSyncResult ClearMesLot(string lot)
     {
-        // 读失败不能当成“已是 NULL”——否则 CLEAR 会在完全没写 MES 的情况下报成功。
-        if (!TryQueryMesDisco(lot, out var current))
-            return false;
+        if (string.IsNullOrWhiteSpace(DiscoEqpNo))
+            return new(false, false, "本柜车名为空，禁止 CLEAR。");
+        if (TryQueryMesDisco(lot, out var current))
+        {
+            if (string.IsNullOrWhiteSpace(current))
+                return new(true, false, "MES 已是 NULL。");
+            if (!string.Equals(current, DiscoEqpNo, StringComparison.Ordinal))
+                return new(false, false, "MES 标记属于其他柜，禁止 CLEAR，请人工核对。");
+        }
 
-        return string.IsNullOrWhiteSpace(current);
+        var item = ResolveMesItem("mes.wire.clear_disco_eqp_no");
+        if (item is null)
+            return new(false, false, "未找到 mes.wire.clear_disco_eqp_no SQL 条目。");
+
+        // 即使预读失败，SQL 的归属条件仍保护其他柜；预读与写入之间变更也无法误清。
+        var write = _mes.Run(item, new Dictionary<string, object?>
+        {
+            ["sublot"] = lot, ["disco_eqp_no"] = DiscoEqpNo
+        });
+        if (write.HasError)
+            return new(false, false, write.Error!);
+        if (write.RowsAffected > 0)
+            return new(true, false, "MES CLEAR 成功。");
+
+        // 0 行可能是并发清空或归属变更，不能直接报成功。
+        if (TryQueryMesDisco(lot, out current))
+        {
+            if (string.IsNullOrWhiteSpace(current))
+                return new(true, false, "MES 已是 NULL。");
+            if (!string.Equals(current, DiscoEqpNo, StringComparison.Ordinal))
+                return new(false, false, "MES 标记已转属其他柜，禁止 CLEAR，请人工核对。");
+        }
+        return new(false, false, "MES CLEAR 未生效（影响 0 行），或无法确认 MES 当前归属。");
     }
 
     /// <summary>
@@ -302,7 +323,7 @@ public sealed class WireDiscoEqpSyncService : IWireDiscoEqpSync
         if (item is null) return false;
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["sublot"] = lot });
-        if (result.HasError) return false;
+        if (result.HasError || result.First is null) return false;
 
         value = result.First?.GetValueOrDefault("DISCOEQPNO")?.ToString();
         return true;

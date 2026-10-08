@@ -8,9 +8,12 @@ sql: |
   UPDATE v_fw_material_indetail
   SET DISCOEQPNO = NULL
   WHERE sublot = :sublot
+    AND DISCOEQPNO = :disco_eqp_no
 oracle_sql: |
   UPDATE fw_material_indetail
   SET DISCOEQPNO = NULL
   WHERE sublot = :sublot
+    AND DISCOEQPNO = :disco_eqp_no
 params:
   - name: sublot
+  - name: disco_eqp_no

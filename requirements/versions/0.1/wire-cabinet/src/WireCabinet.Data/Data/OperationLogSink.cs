@@ -107,6 +107,7 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
     private readonly SqlCatalog _catalog;
     private readonly IAppDb _appDb;
     private readonly OperationLogPendingStore _pending;
+    private readonly object _retryGate = new();
 
     /// <summary>写失败时触发（记录, 错误）。供界面告警与故障日志挂接。</summary>
     public event Action<OperationLogEntry, string>? WriteFailed;
@@ -146,6 +147,13 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
     }
 
     public OperationLogWriteResult RetryPendingRow(long id, bool manual = false)
+    {
+        // 后台与人工重试共享同一通道；跨实例仍由事务及状态条件保护。
+        lock (_retryGate)
+            return RetryPendingRowCore(id, manual);
+    }
+
+    private OperationLogWriteResult RetryPendingRowCore(long id, bool manual)
     {
         var row = _pending.TryGet(id);
         if (row is null)

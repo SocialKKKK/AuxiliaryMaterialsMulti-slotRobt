@@ -1,0 +1,9 @@
+id: app.slot.list_available_lots
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: MES 对账所需柜内可用批号全集。
+sql: |
+  SELECT wire_lot_no FROM app_slot
+  WHERE biz_state = 'available_wire'
+    AND wire_lot_no IS NOT NULL AND TRIM(wire_lot_no) != '';

@@ -12,9 +12,14 @@ inputs:
     type: string
     required: true
     source: 焊丝批号 wire_lot_no
+  - name: disco_eqp_no
+    type: string
+    required: true
+    source: 当前柜小车名
 sql: |
   UPDATE fw_material_indetail
   SET DISCOEQPNO = NULL
   WHERE sublot = :sublot
+    AND DISCOEQPNO = :disco_eqp_no
 result_cardinality: write
-business_rule: 幂等；重复 NULL 视为成功。仅在 available_wire 清格成功后调用。
+business_rule: 只清当前柜归属；0 行须复查，已 NULL 幂等成功、其他柜归属拒绝。仅在 available_wire 清格成功后调用。

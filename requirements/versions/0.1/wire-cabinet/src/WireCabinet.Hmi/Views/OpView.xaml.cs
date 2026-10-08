@@ -701,7 +701,13 @@ public partial class OpView : UserControl
             return false;
 
         var hwConfigured = App.Bootstrap.Hardware.IsConfigured;
+        forceIfNoHardware &= !hwConfigured;
         App.SlotHardwarePoll.Snapshots.TryGetValue(slot.SlotNo, out var hw);
+        if (hwConfigured && hw is not { Wired: true, ReadOk: true, LockClosed: not null })
+        {
+            SetStatus("无法确认格口门锁状态，请等待硬件通信恢复后再完成操作。");
+            return false;
+        }
         if (SlotDoorDisplay.IsDisplayOpen(slot, hw, hwConfigured))
         {
             setDoorWasOpen(true);
@@ -717,6 +723,22 @@ public partial class OpView : UserControl
         _actionInProgress = true;
         try
         {
+            // 缓存可能在点击前已过时；推进业务前重新读取实际 DI。
+            if (hwConfigured)
+            {
+                bool? closed;
+                try { closed = await App.Bootstrap.Hardware.ReadLockClosedAsync(slot.SlotNo); }
+                catch (Exception ex)
+                {
+                    SetStatus($"门锁读取失败，请等待通信恢复后再完成操作：{ex.Message}");
+                    return false;
+                }
+                if (closed != true)
+                {
+                    SetStatus("请关闭格口并等待门锁闭合后再完成操作。");
+                    return false;
+                }
+            }
             var (ok, msg, reason) = await Task.Run(advance);
             if (!ok)
             {

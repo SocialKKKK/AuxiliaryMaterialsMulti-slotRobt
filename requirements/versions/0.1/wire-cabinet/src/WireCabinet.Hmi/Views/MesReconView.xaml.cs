@@ -34,7 +34,15 @@ public partial class MesReconView : UserControl
 
     private void RefreshDrift()
     {
-        DriftList.ItemsSource = Reconcile.ComputeDrift().Select(DriftVm.From).ToList();
+        try
+        {
+            DriftList.ItemsSource = Reconcile.ComputeDrift().Select(DriftVm.From).ToList();
+        }
+        catch (InvalidOperationException ex)
+        {
+            DriftList.ItemsSource = null;
+            ShowReconciliationError(ex.Message);
+        }
     }
 
     private void RefreshInterrupts()
@@ -112,9 +120,26 @@ public partial class MesReconView : UserControl
 
     private void EnqueueDriftRepair_Click(object sender, RoutedEventArgs e)
     {
-        var count = Reconcile.EnqueueAutoRepairForDrift();
-        MessageBox.Show($"已处理 {count} 条非中断漂移项（成功或已写入 pending）。", "MES 对账", MessageBoxButton.OK, MessageBoxImage.Information);
+        try
+        {
+            var count = Reconcile.EnqueueAutoRepairForDrift();
+            MessageBox.Show($"已处理 {count} 条非中断漂移项（成功或已写入 pending）。", "MES 对账", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (InvalidOperationException ex)
+        {
+            DriftList.ItemsSource = null;
+            ShowReconciliationError(ex.Message);
+            return;
+        }
         RefreshAll();
+    }
+
+    private void ShowReconciliationError(string message)
+    {
+        if (Window.GetWindow(this) is { } owner)
+            FlowErrorDialog.Show(owner, message);
+        else
+            MessageBox.Show(message, "对账已停止", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void ClearMhSnapshot_Click(object sender, RoutedEventArgs e)

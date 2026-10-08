@@ -70,14 +70,12 @@ public sealed class MesDiscoReconciliationService
 
     private HashSet<string> LoadCabinetLots()
     {
-        var result = _appDb.RunRaw(
-            """
-            SELECT wire_lot_no FROM app_slot
-            WHERE biz_state = 'available_wire'
-              AND wire_lot_no IS NOT NULL AND TRIM(wire_lot_no) != '';
-            """,
-            new Dictionary<string, object?>(),
-            isWrite: false);
+        var item = _catalog.Find("app.slot.list_available_lots")
+            ?? throw new InvalidOperationException("柜内库存对账 SQL 条目缺失，已停止对账。");
+        var result = _appDb.Run(item, new Dictionary<string, object?>());
+
+        if (result.HasError)
+            throw new InvalidOperationException($"柜内库存读取失败，已停止对账：{result.Error}");
 
         return result.Rows
             .Select(r => r.GetValueOrDefault("wire_lot_no")?.ToString()?.Trim())
@@ -90,9 +88,11 @@ public sealed class MesDiscoReconciliationService
     {
         var item = ResolveMesListItem();
         if (item is null)
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            throw new InvalidOperationException("MES 对账 SQL 条目缺失，已停止对账。");
 
         var result = _mes.Run(item, new Dictionary<string, object?> { ["disco_eqp_no"] = discoEqpNo });
+        if (result.HasError)
+            throw new InvalidOperationException($"MES 库存读取失败，已停止对账：{result.Error}");
         return result.Rows
             .Select(r => r.GetValueOrDefault("sublot")?.ToString()?.Trim())
             .Where(s => !string.IsNullOrEmpty(s))

@@ -83,7 +83,7 @@ public sealed class OperationLogPendingStore
             UPDATE operation_log_pending
             SET status = 'pending', retry_count = :retry_count, next_retry_at = :next_retry_at,
                 last_error = :last_error, last_try_ts = datetime('now')
-            WHERE id = :id;
+            WHERE id = :id AND status IN ('pending', 'failed');
             """,
             new Dictionary<string, object?>
             {
@@ -100,7 +100,7 @@ public sealed class OperationLogPendingStore
             UPDATE operation_log_pending
             SET status = 'failed', retry_count = :retry_count, next_retry_at = NULL,
                 last_error = :last_error, last_try_ts = datetime('now')
-            WHERE id = :id;
+            WHERE id = :id AND status IN ('pending', 'failed');
             """,
             new Dictionary<string, object?>
             {

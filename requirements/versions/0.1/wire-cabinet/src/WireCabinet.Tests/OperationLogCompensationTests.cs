@@ -204,6 +204,46 @@ public class OperationLogCompensationTests : IDisposable
     }
 
     [Fact]
+    public void StaleFailureUpdatesCannotReviveCompletedPendingEvent()
+    {
+        var (db, sink) = NewSink();
+        var pending = new OperationLogPendingStore(new SqliteAppDb(db));
+        pending.Enqueue(Entry("LOT-STALE"), "initial fault");
+        var id = Assert.Single(pending.ListActive()).Id;
+        Assert.True(sink.RetryPendingRow(id).Success);
+
+        // 模拟另一个线程此前读到 pending，完成失败路径时本行已经补写成功。
+        pending.ScheduleRetry(id, 1, DateTime.UtcNow, "stale failure");
+        pending.MarkFailed(id, "stale manual failure", 1);
+        Assert.Equal(OperationLogPendingStore.StatusSuccess, pending.TryGet(id)!.Status);
+        Assert.False(sink.RetryPendingRow(id, manual: true).Success);
+        Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+    }
+
+    [Fact]
+    public async Task ConcurrentBackgroundAndManualRetriesAcrossInstancesWriteOnlyOnce()
+    {
+        var (db, sink) = NewSink();
+        db.EnsureWal();
+        var pending = new OperationLogPendingStore(new SqliteAppDb(db));
+        pending.Enqueue(Entry("LOT-CONCURRENT"), "initial fault");
+        var id = Assert.Single(pending.ListActive()).Id;
+        var other = new SqliteOperationLogSink(SqlCatalog.Load(), new SqliteAppDb(db));
+        using var start = new ManualResetEventSlim();
+        var tasks = Enumerable.Range(0, 12).Select(i => Task.Run(() =>
+        {
+            start.Wait();
+            return (i % 2 == 0 ? sink : other).RetryPendingRow(id, manual: i % 2 != 0);
+        })).ToArray();
+        start.Set();
+        await Task.WhenAll(tasks);
+        Assert.Equal(OperationLogPendingStore.StatusSuccess, pending.TryGet(id)!.Status);
+        Assert.Empty(sink.ListPending());
+        Assert.Single(db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows);
+        Assert.False(sink.RetryPendingRow(id, manual: true).Success);
+    }
+
+    [Fact]
     public void RetryBatch_SkipsCorruptRowWithoutThrowing()
     {
         var (db, sink) = NewSink();

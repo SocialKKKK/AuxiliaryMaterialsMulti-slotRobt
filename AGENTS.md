@@ -48,6 +48,8 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 - **现场联调未做**；MES Oracle 真库路径从未执行过（全部验证基于 SQLite mock）—— 这是最大风险。共享 `appsettings.json` 不含现场凭据；部署须保留现场 `appsettings.Local.json`。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
+- 10 月 8 日追加代码审查：隔离复现 5 项未修缺陷（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；见 requirements/versions/0.2/代码审查-20261008.md。
+
 ## 未决 / 已知限制
 
 | 事项 | 状态 |

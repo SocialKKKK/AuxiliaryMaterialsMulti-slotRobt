@@ -1,0 +1,11 @@
+BUG1: configured IO with missing/failed DI => AllDoorsClosed=true and move dispatched.
+BUG1b: explicit ReadOk=false/LockClosed=null => AllDoorsClosed=true.
+BUG2: local inventory SELECT failure treated as empty; automatic reconciliation calls MES CLEAR for a lot still in the cabinet.
+BUG3: CLEAR proceeds while MES current owner is OTHER-CABINET.
+Race results: False/True; status=pending
+BUG4: concurrent retry resets success to pending after second transaction rolls back.
+BUG4 retry succeeds.
+BUG4 confirmed: one pending event produces TWO operation-log rows.
+BUG5 control: automatic polling correctly waits while DI is OPEN.
+BUG5: same production HMI close-door gate advances with force=true while hardware DI remains OPEN; issue SQL clears inventory.
+BUG5 consequence: legitimate operation becomes an uncommanded-open report after premature DB close.

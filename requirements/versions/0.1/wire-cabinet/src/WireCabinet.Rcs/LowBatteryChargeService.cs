@@ -1,6 +1,7 @@
 ﻿using AgvDispatch.Sdk;
 using AgvDispatch.Sdk.Models;
 using WireCabinet.Core.Config;
+using WireCabinet.Slots;
 
 namespace WireCabinet.Rcs;
 
@@ -16,6 +17,9 @@ public sealed class LowBatteryChargeService
     private bool _postChargeReturnPending;
     private int? _returnDestination;
     private int? _manualWorkStationHint;
+    private bool _wasAtCharge;
+    private readonly ISlotControlService? _slots;
+    private string? _lastReturnFailure;
 
     /// <summary>充满后自动返航的记录（0.2 §3.1 第 8 项）；为 null 时不记。</summary>
     private readonly AgvActionLog? _agvLog;
@@ -26,7 +30,8 @@ public sealed class LowBatteryChargeService
         AgvThresholdOptions thresholds,
         AgvOrderGate orderGate,
         StationConfiguration stations,
-        AgvActionLog? agvLog = null)
+        AgvActionLog? agvLog = null,
+        ISlotControlService? slots = null)
     {
         _agvLog = agvLog;
         _client = client;
@@ -34,10 +39,22 @@ public sealed class LowBatteryChargeService
         _thresholds = thresholds;
         _orderGate = orderGate;
         _stations = stations;
+        _slots = slots;
     }
 
     public bool PostChargeReturnPending => _postChargeReturnPending;
     public int? ReturnDestination => _returnDestination;
+    public string? LastBlockReason { get; private set; }
+
+    public void ObserveSnapshot(VehicleSnapshot snap)
+    {
+        var atCharge = IsVehicleCharging(snap.Vehicle) || _stations.IsChargeRelatedPosition(snap.Vehicle.CurrentPosition);
+        if (atCharge && !_wasAtCharge && !_postChargeReturnPending)
+            RememberReturnDestinationOnChargeDispatch(_manualWorkStationHint ?? snap.Vehicle.CurrentPosition);
+        if (!atCharge && _stations.TryGetWorkStationAt(snap.Vehicle.CurrentPosition) is not null)
+            RememberWorkStation(snap.Vehicle.CurrentPosition);
+        _wasAtCharge = atCharge;
+    }
 
     public void RememberWorkStation(int destination)
     {
@@ -79,6 +96,7 @@ public sealed class LowBatteryChargeService
 
     public async Task<string?> TryAutoChargeAsync(VehicleSnapshot snap, CancellationToken ct = default)
     {
+        LastBlockReason = null;
         var v = snap.Vehicle;
         if (v.Battery > _thresholds.LowBatteryPercent)
             return null;
@@ -86,7 +104,8 @@ public sealed class LowBatteryChargeService
         if (IsVehicleCharging(v))
             return null;
 
-        if (_orderGate.BlocksNewOrder(snap, AgvPendingOrderKind.Charge))
+        LastBlockReason = await GetDispatchBlockAsync(snap, AgvPendingOrderKind.Charge, ct).ConfigureAwait(false);
+        if (LastBlockReason is not null)
             return null;
 
         if (await IsChargeStationOccupiedByOtherAsync(ct).ConfigureAwait(false))
@@ -107,6 +126,7 @@ public sealed class LowBatteryChargeService
 
     public async Task<string?> TryReturnToWorkStationAsync(VehicleSnapshot snap, CancellationToken ct = default)
     {
+        LastBlockReason = null;
         if (!_postChargeReturnPending)
             return null;
 
@@ -126,38 +146,54 @@ public sealed class LowBatteryChargeService
             return null;
         }
 
-        if (_orderGate.BlocksNewOrder(snap, AgvPendingOrderKind.Move))
-            return null;
-
         var returnStation = dest.Value;
         try
         {
+            LastBlockReason = await GetDispatchBlockAsync(snap, AgvPendingOrderKind.Move, ct).ConfigureAwait(false);
+            if (LastBlockReason is not null) return null;
+            if (_orderGate.CanEndChargingOrder(snap))
+            {
+                if (await _orderGate.TryEndChargingOrderAsync(_client, snap, ct).ConfigureAwait(false))
+                {
+                    _agvLog?.RecordCommand(AgvActionLog.AgvCharge, "返航前请求结束充电", ok: true);
+                    return "已请求结束充电，等待订单释放后返航。";
+                }
+                LastBlockReason = "等待 RCS 释放充电订单后返航。";
+                return null;
+            }
             var order = await _client.CreateMoveOrderAsync(returnStation, cancellationToken: ct).ConfigureAwait(false);
+            _lastReturnFailure = null;
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Move);
             var name = _stations.TryGetWorkStationAt(returnStation)?.Name ?? returnStation.ToString();
             _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: true, detail: $"→ {name}（{order.OrderId}）");
             return $"充满后已返航 {name}（站点 {returnStation}），订单 {order.OrderId}";
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: false, error: ex.Message);
+            if (_lastReturnFailure != ex.Message)
+                _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: false, error: ex.Message);
+            _lastReturnFailure = ex.Message;
             return $"返航失败：{ex.Message}";
         }
     }
 
     public void BootstrapExternalChargeSession(VehicleSnapshot snap)
     {
-        var v = snap.Vehicle;
-        if (!IsVehicleCharging(v) && !_stations.IsChargeRelatedPosition(v.CurrentPosition))
-            return;
+        ObserveSnapshot(snap);
+    }
 
-        ArmPostChargeReturnToDefault();
-
-        var defaultDest = SanitizeReturnDestination(_stations.ResolveDefaultReturnStation()?.RcsDestination);
-        if (defaultDest is > 0
-            && v.CurrentPosition == defaultDest
-            && v.Battery >= _thresholds.FullBatteryPercent)
-            ClearPostChargeReturn();
+    private async Task<string?> GetDispatchBlockAsync(VehicleSnapshot snap, AgvPendingOrderKind kind, CancellationToken ct)
+    {
+        if (_slots is null) return "门态服务未就绪，禁止自动下单。";
+        if (_slots.HasUnlockInProgress()) return "存在开锁中，禁止自动下单。";
+        var doors = await _slots.GetDoorStateForAgvAsync(ct).ConfigureAwait(false);
+        if (!doors.AllDoorsClosed || doors.AnyDoorOpen) return "格口未全关或门态未知，禁止自动下单。";
+        if (kind == AgvPendingOrderKind.Move && _orderGate.CanEndChargingOrder(snap)) return null;
+        var gate = _orderGate.GetBlockReason(snap, kind);
+        if (gate is not null) return gate;
+        var readiness = AgvReadinessPolicy.Evaluate(snap.Vehicle, snap.Order, doors, _options.StateThresholds, false, false);
+        return readiness.CanAcceptOrder ? null : readiness.Reason;
     }
 
     private bool IsVehicleCharging(VehicleInfoDto vehicle) =>

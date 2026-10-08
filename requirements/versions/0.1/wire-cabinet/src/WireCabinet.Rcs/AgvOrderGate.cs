@@ -13,28 +13,41 @@ public sealed class AgvOrderGate
 {
     private readonly AgvStateThresholds _thresholds;
     private readonly Func<bool> _callInProgress;
+    private readonly AgvDispatchOptions? _options;
+    private string? _cancelRequestedOrderId;
+    private bool _cancelWasAssigned;
+    private bool _unconfirmedDispatch;
 
     private string? _localPendingOrderId;
     private AgvPendingOrderKind? _localPendingKind;
     private OrderDetailDto? _cachedPendingDetail;
 
-    public AgvOrderGate(AgvStateThresholds thresholds, Func<bool>? callInProgress = null)
+    public AgvOrderGate(AgvStateThresholds thresholds, Func<bool>? callInProgress = null, AgvDispatchOptions? options = null)
     {
         _thresholds = thresholds;
         _callInProgress = callInProgress ?? (() => false);
+        _options = options;
     }
 
     public string? LocalPendingOrderId => _localPendingOrderId;
     public AgvPendingOrderKind? LocalPendingKind => _localPendingKind;
+    public string? LastReconcileError { get; private set; }
+    public bool HasUnconfirmedDispatch => _unconfirmedDispatch;
 
     public void RecordPlacedOrder(string? orderId, AgvPendingOrderKind kind)
     {
         if (string.IsNullOrWhiteSpace(orderId))
+        {
+            _unconfirmedDispatch = true;
+            LastReconcileError = "RCS 未返回订单号，等待车辆确认订单；禁止重复下单。";
             return;
+        }
 
         _localPendingOrderId = orderId;
         _localPendingKind = kind;
         _cachedPendingDetail = null;
+        LastReconcileError = null;
+        _unconfirmedDispatch = false;
     }
 
     public void ClearPending()
@@ -42,80 +55,130 @@ public sealed class AgvOrderGate
         _localPendingOrderId = null;
         _localPendingKind = null;
         _cachedPendingDetail = null;
+        LastReconcileError = null;
     }
 
     public bool HasBlockingOrder(VehicleSnapshot snap)
     {
+        if (_unconfirmedDispatch) return true;
         if (!string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId))
             return true;
 
         if (!string.IsNullOrWhiteSpace(_localPendingOrderId))
             return true;
 
-        return snap.Order is not null && IsBlockingOrderState(snap.Order.EffectiveOrderState);
+        return snap.Order is not null && !IsTerminal(snap.Order);
     }
 
     public bool BlocksNewOrder(VehicleSnapshot snap, AgvPendingOrderKind? placingKind = null)
+        => GetBlockReason(snap, placingKind) is not null;
+
+    public string? GetBlockReason(VehicleSnapshot snap, AgvPendingOrderKind? placingKind = null)
     {
         if (_callInProgress())
-            return true;
+            return "下单请求正在执行，请稍候。";
 
-        if (!_thresholds.IdleSysStates.Contains(snap.Vehicle.SysState ?? "", StringComparer.OrdinalIgnoreCase))
-            return true;
+        if (!snap.Vehicle.Enable)
+            return "车辆未在线或不可调度。";
+        if (AgvReadinessPolicy.HasEmergency(snap.Vehicle, _thresholds))
+            return "车辆急停未解除。";
 
-        if (!string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId))
-            return true;
+        if (HasBlockingOrder(snap))
+            return LastReconcileError ?? (_cancelRequestedOrderId is not null
+                ? "充电任务取消中，等待 RCS 释放订单。"
+                : "已有进行中或队列中的订单，请先取消或等待完成。");
 
-        if (!string.IsNullOrWhiteSpace(_localPendingOrderId))
-            return true;
+        var sys = snap.Vehicle.SysState ?? "";
+        var chargingDeparture = placingKind == AgvPendingOrderKind.Move
+            && _thresholds.ChargingSysStates.Contains(sys, StringComparer.OrdinalIgnoreCase);
+        if (!_thresholds.IdleSysStates.Contains(sys, StringComparer.OrdinalIgnoreCase) && !chargingDeparture)
+            return $"车辆状态 {sys} 不允许下单。";
 
-        if (snap.Order is not null && IsBlockingOrderState(snap.Order.EffectiveOrderState))
-            return true;
-
-        if (placingKind == AgvPendingOrderKind.Charge
-            && _thresholds.ChargingSysStates.Contains(snap.Vehicle.SysState ?? "", StringComparer.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        return null;
     }
+
+    public bool CanEndChargingOrder(VehicleSnapshot snap) =>
+        _options is not null && snap.Vehicle.Enable
+        && !AgvReadinessPolicy.HasEmergency(snap.Vehicle, _thresholds)
+        && _thresholds.ChargingSysStates.Contains(snap.Vehicle.SysState ?? "", StringComparer.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId)
+        && !_unconfirmedDispatch
+        && (_localPendingOrderId is null || _localPendingOrderId == snap.Vehicle.OrderTaskId)
+        && snap.Order?.Mission is { } mission
+        && mission.Any(m => m.Type == "act" && m.ActionId == _options.ChargeActionId)
+        && mission.Any(m => m.Type == "move" && m.Destination == _options.ChargeDestination)
+        && !IsTerminal(snap.Order);
+
+    // 取消是异步命令：成功响应后仍保留订单门禁，直到下一份快照确认订单已释放。
+    public async Task<bool> TryEndChargingOrderAsync(IAgvDispatchClient client, VehicleSnapshot snap, CancellationToken ct)
+    {
+        if (!CanEndChargingOrder(snap) || _callInProgress())
+            return false;
+        var id = snap.Vehicle.OrderTaskId!;
+        if (_cancelRequestedOrderId == id)
+            return false;
+        await client.CancelOrderAsync(id, ct).ConfigureAwait(false);
+        RecordCancellationRequested(id, wasAssigned: true);
+        return true;
+    }
+
+    public void RecordCancellationRequested(string id, bool wasAssigned = true)
+    {
+        _cancelRequestedOrderId = id;
+        _cancelWasAssigned = wasAssigned;
+    }
+    public bool CancellationRequested(string id) => _cancelRequestedOrderId == id;
 
     public void ApplySnapshot(VehicleSnapshot snap)
     {
         var taskId = snap.Vehicle.OrderTaskId;
-        if (!string.IsNullOrWhiteSpace(taskId) && !string.IsNullOrWhiteSpace(_localPendingOrderId))
+        if (_unconfirmedDispatch && !string.IsNullOrWhiteSpace(taskId))
         {
-            if (string.Equals(taskId, _localPendingOrderId, StringComparison.OrdinalIgnoreCase))
-                ClearPending();
-            else
-                ClearPending();
+            _unconfirmedDispatch = false;
+            LastReconcileError = null;
         }
+        if (string.IsNullOrWhiteSpace(taskId) && _cancelRequestedOrderId is not null && _cancelWasAssigned)
+        {
+            if (_localPendingOrderId == _cancelRequestedOrderId)
+                ClearPending();
+            _cancelRequestedOrderId = null;
+        }
+        if (!string.IsNullOrWhiteSpace(taskId)
+            && string.Equals(taskId, _localPendingOrderId, StringComparison.OrdinalIgnoreCase))
+            ClearPending();
     }
 
     public async Task ReconcilePendingAsync(IAgvDispatchClient client, VehicleSnapshot snap, CancellationToken ct = default)
     {
         ApplySnapshot(snap);
 
-        if (!string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId))
-            return;
-
         if (string.IsNullOrWhiteSpace(_localPendingOrderId))
             return;
 
+        var pendingId = _localPendingOrderId;
         try
         {
-            var detail = await client.GetOrderDetailAsync(_localPendingOrderId, ct).ConfigureAwait(false);
+            var detail = await client.GetOrderDetailAsync(pendingId, ct).ConfigureAwait(false);
+            if (_localPendingOrderId != pendingId) return;
             _cachedPendingDetail = detail;
-            if (ShouldClearPending(detail))
+            LastReconcileError = null;
+            if (IsTerminal(detail))
+            {
                 ClearPending();
+                if (_cancelRequestedOrderId == pendingId) _cancelRequestedOrderId = null;
+            }
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
         {
-            // 查询失败时保留 pending，继续阻塞重复下单。
+            if (_localPendingOrderId == pendingId)
+                LastReconcileError = $"订单 {pendingId} 状态查询失败，保留发车联锁：{ex.Message}";
         }
     }
 
     public string FormatOrderStateDisplay(VehicleSnapshot snap)
     {
+        if (_unconfirmedDispatch) return "等待 RCS 确认订单";
         if (snap.Order is not null)
         {
             var state = snap.Order.EffectiveOrderState;
@@ -133,13 +196,14 @@ public sealed class AgvOrderGate
         }
 
         if (!string.IsNullOrWhiteSpace(_localPendingOrderId))
-            return "队列中";
+            return LastReconcileError is not null ? "订单状态查询失败" : "等待订单确认";
 
         return "—";
     }
 
     public string FormatTaskSummary(VehicleSnapshot snap, Func<int, string> formatPosition)
     {
+        if (_unconfirmedDispatch) return LastReconcileError ?? "等待 RCS 确认订单";
         var v = snap.Vehicle;
         if (!string.IsNullOrWhiteSpace(v.OrderTaskId))
             return FormatRcsTask(v, snap.Order, formatPosition, _thresholds.OrderStatePending);
@@ -155,6 +219,8 @@ public sealed class AgvOrderGate
 
     public bool CanCancelOrder(VehicleSnapshot snap)
     {
+        if (_cancelRequestedOrderId is not null) return false;
+        if (CanEndChargingOrder(snap)) return true;
         if (!string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId))
         {
             var v = snap.Vehicle;
@@ -194,10 +260,8 @@ public sealed class AgvOrderGate
             : $"{orderLabel}{queueHint} → {name}";
     }
 
-    private bool IsBlockingOrderState(int state) =>
-        state == _thresholds.OrderStatePending || state == _thresholds.OrderStateCanceled;
-
-    private bool ShouldClearPending(OrderDetailDto detail) =>
-        !string.IsNullOrWhiteSpace(detail.DoneTime)
-        || detail.EffectiveOrderState == _thresholds.OrderStateCanceled;
+    private bool IsTerminal(OrderDetailDto detail) =>
+        !string.IsNullOrWhiteSpace(detail.EffectiveDoneTime)
+        || detail.EffectiveOrderState == _thresholds.OrderStateCanceled
+        || _thresholds.CompletedOrderStates.Contains(detail.EffectiveOrderState);
 }

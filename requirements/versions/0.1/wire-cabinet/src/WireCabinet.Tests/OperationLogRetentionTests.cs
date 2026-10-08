@@ -86,6 +86,7 @@ public class OperationLogRetentionTests
             if (f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) continue;
             if (f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) continue;
             if (f.Contains($"{Path.DirectorySeparatorChar}WireCabinet.Tests{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) continue;
+            if (f.Contains($"{Path.DirectorySeparatorChar}WireCabinet.Hmi.Tests{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) continue;
             yield return f;
         }
     }

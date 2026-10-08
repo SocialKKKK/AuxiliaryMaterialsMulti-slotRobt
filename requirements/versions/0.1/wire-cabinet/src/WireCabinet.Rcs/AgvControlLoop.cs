@@ -24,6 +24,8 @@ public sealed class AgvControlLoop
     public async Task<AgvLoopTickResult> TickAsync(int? dispatchDestinationIfAllowed = null, CancellationToken ct = default)
     {
         var snapshot = await _client.GetVehicleSnapshotAsync(cancellationToken: ct).ConfigureAwait(false);
+        if (_orderGate is not null)
+            await _orderGate.ReconcilePendingAsync(_client, snapshot, ct).ConfigureAwait(false);
         // 订单已在 RCS 侧结束/取消后，清除“呼叫进行中”门禁，否则无法二次下单。
         if (string.IsNullOrWhiteSpace(snapshot.Vehicle.OrderTaskId))
             _callInProgress = false;
@@ -31,11 +33,26 @@ public sealed class AgvControlLoop
         var doorInput = await _doors.GetDoorStateAsync(ct).ConfigureAwait(false);
         var eval = AgvReadinessPolicy.Evaluate(snapshot.Vehicle, snapshot.Order, doorInput, _options.StateThresholds, _pausedForDoor, _callInProgress);
 
+        if (eval.CanAcceptOrder && _orderGate?.GetBlockReason(snapshot, AgvPendingOrderKind.Move) is { } gateReason)
+            eval = new AgvReadinessResult { Reason = gateReason };
         var result = new AgvLoopTickResult(snapshot, doorInput, eval);
+
+        if (dispatchDestinationIfAllowed is > 0 && snapshot.Vehicle.CurrentPosition == dispatchDestinationIfAllowed)
+            return result with { ExecutedAction = "AlreadyAtDestination" };
+
+        if (dispatchDestinationIfAllowed is > 0 && doorInput.AllDoorsClosed && !doorInput.AnyDoorOpen
+            && _orderGate?.CanEndChargingOrder(snapshot) == true)
+        {
+            var ended = await _orderGate.TryEndChargingOrderAsync(_client, snapshot, ct).ConfigureAwait(false);
+            return result with { ExecutedAction = ended ? "CancelChargeOrder" : "AwaitChargeOrderRelease" };
+        }
 
         if (eval.RecommendsCancelOrder && !string.IsNullOrWhiteSpace(snapshot.Vehicle.OrderTaskId))
         {
+            if (_orderGate?.CancellationRequested(snapshot.Vehicle.OrderTaskId) == true)
+                return result;
             await _client.CancelOrderAsync(snapshot.Vehicle.OrderTaskId, ct).ConfigureAwait(false);
+            _orderGate?.RecordCancellationRequested(snapshot.Vehicle.OrderTaskId);
             _callInProgress = false;
             return result with { ExecutedAction = "CancelOrder" };
         }
@@ -67,6 +84,8 @@ public sealed class AgvControlLoop
     }
 
     public bool CallInProgress => _callInProgress;
+    public bool DispatchPending => _callInProgress || _orderGate?.LocalPendingOrderId is not null
+        || _orderGate?.HasUnconfirmedDispatch == true;
 
     public void ResetCallState() => _callInProgress = false;
     public void MarkCallInProgress() => _callInProgress = true;

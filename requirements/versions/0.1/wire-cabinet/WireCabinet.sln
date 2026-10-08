@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgvDispatch.Sdk", "agv-disp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WireCabinet.Tests", "src\WireCabinet.Tests\WireCabinet.Tests.csproj", "{0F983726-890C-41B7-ADBB-E322CE18EA25}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WireCabinet.Hmi.Tests", "src\WireCabinet.Hmi.Tests\WireCabinet.Hmi.Tests.csproj", "{ADA179AC-A134-48A8-B1CA-AC243792C1C6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -141,6 +143,18 @@ Global
 		{0F983726-890C-41B7-ADBB-E322CE18EA25}.Release|x64.Build.0 = Release|Any CPU
 		{0F983726-890C-41B7-ADBB-E322CE18EA25}.Release|x86.ActiveCfg = Release|Any CPU
 		{0F983726-890C-41B7-ADBB-E322CE18EA25}.Release|x86.Build.0 = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|x64.Build.0 = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Debug|x86.Build.0 = Debug|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|x64.ActiveCfg = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|x64.Build.0 = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|x86.ActiveCfg = Release|Any CPU
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -155,5 +169,6 @@ Global
 		{42AF5036-C4F9-469B-868F-4820532C649C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{C9AA51E3-777D-4143-A879-FCAA9110A022} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{0F983726-890C-41B7-ADBB-E322CE18EA25} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{ADA179AC-A134-48A8-B1CA-AC243792C1C6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

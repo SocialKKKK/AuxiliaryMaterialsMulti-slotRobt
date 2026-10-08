@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test src/WireCabinet.Tests/WireCabinet.Tests.csproj   # 期望 163 全通过
+dotnet test WireCabinet.sln                         # 期望 206 全通过（191 Core + 15 Windows HMI）
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -41,10 +41,10 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 
 ## 当前状态
 
-- `main` 已含 0.2 实现。测试 163/163，构建 0 警告；开门与关门分别追加事件。
+
 - 覆盖矩阵 12 项全部落地。**已实机核对**（截图或查库）：记录页渲染、按批号追溯、
   批量开门的记录条数、待补偿人工重试、MH 操作人姓名解析、时区显示、静置不刷记录。
-  **只有测试覆盖**：维护试开、无指令开门、开门即清空、AGV 六条命令的正向路径、MES 真库。
+  9 月 29 日已现场验证开门即清空、自动返航与 MES 真库；维护试开、物理无指令开门及控车其余命令仍待现场验证。
 - **现场联调未做**；MES Oracle 真库路径从未执行过（全部验证基于 SQLite mock）—— 这是最大风险。共享 `appsettings.json` 不含现场凭据；部署须保留现场 `appsettings.Local.json`。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
@@ -55,6 +55,8 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 | MH 存料的 `eqp_no` 恒为空 | 未决：存料流程无此信息，需确认是否认可「该场景不适用」 |
 | 查看/导出留痕无操作人 | 已知限制：记录页门禁只有密码、无工号（§2） |
 | 导出 Excel 的落盘 | 数据层有 9 个用例覆盖，界面只差人工点一次 |
+| **订单门与 RCS 订单状态可能不同步** | 10 月 8 日本地已修：兼容 `done_time`，取消后等 RCS 释放，详情失败显示原因且保留联锁；不因车辆订单为空强清队列。现场复核待部署 |
+| **充电态无法手动离站/自动返航** | 2026-10-08 本地已修并截图验证：统一离站门禁，已识别的充电单先取消并等释放，外部充电迁移登记返航，自动路径也检查门态。阈值未改；现场根因与修复效果待取证/部署，见 `requirements/versions/0.2/控车充电阻塞-排查结论.md` |
 | 归档/备份的周期与存放 | 做法已定，参数待现场填实（`运维说明-归档与备份.md`） |
 | 两套 FlowEngine | 产品一份、`validation/wire-flow-lab` 一份 fork（已漂移），长期需收拢 |
 
@@ -64,6 +66,8 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 - 提交习惯：**每个提交独立可构建、可过测试**；界面类改动要实机截图核对后再提交。
 - 涉及**真实硬件/车辆**的动作（如 `--execute` 控车）必须先与用户确认 —— 参考
   `AgvDispatch.Sample` 的约定：**默认干跑，写接口需显式 `--execute`**。
+
+10 月 8 日本地控车修复：充电态允许安全离站，已识别的本车充电订单先请求取消并等待 RCS 释放；在线、急停、移动/进程就绪、门全关和开锁联锁仍生效。阈值未改，现场尚未部署；BMS 无可识别订单时需现场取证。
 
 ## 收尾时同步文档（常驻要求）
 

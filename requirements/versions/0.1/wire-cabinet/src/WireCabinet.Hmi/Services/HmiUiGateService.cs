@@ -5,40 +5,26 @@ namespace WireCabinet.Hmi.Services;
 /// <summary>集中 HMI 门控：AGV 任务、到站、手动移动锁定。</summary>
 public sealed class HmiUiGateService
 {
-    private bool _movementControlsLocked;
-    private bool _sawActiveOrderWhileLocked;
+    private readonly AgvMovementLock _movementLock = new();
 
-    public bool MovementControlsLocked => _movementControlsLocked;
+    public bool MovementControlsLocked => _movementLock.IsLocked;
 
     public void SetMovementLocked(bool locked)
     {
-        _movementControlsLocked = locked;
-        if (locked)
-            _sawActiveOrderWhileLocked = false;
+        _movementLock.Set(locked);
     }
 
     /// <summary>轮询刷新后调用：避免下单成功但 OrderTaskId 尚未出现时误解锁。</summary>
     public void OnAgvSnapshotRefreshed()
     {
-        if (_movementControlsLocked && App.Agv.HasBlockingOrder)
-            _sawActiveOrderWhileLocked = true;
+        TryClearMovementLock();
     }
 
     public void TryClearMovementLock()
     {
-        if (!_movementControlsLocked)
-            return;
-        if (App.Agv.HasBlockingOrder)
-        {
-            _sawActiveOrderWhileLocked = true;
-            return;
-        }
-
-        if (!_sawActiveOrderWhileLocked)
-            return;
-
-        if (App.Agv.CanPlaceMoveOrChargeOrder)
-            _movementControlsLocked = false;
+        _movementLock.Refresh(App.Agv.HasBlockingOrder,
+            App.Agv.Move?.WaitingForChargeDeparture == true || App.Agv.ControlLoop?.CallInProgress == true,
+            App.Agv.CanPlaceMoveOrder);
     }
 
     public bool SkipStationGates =>

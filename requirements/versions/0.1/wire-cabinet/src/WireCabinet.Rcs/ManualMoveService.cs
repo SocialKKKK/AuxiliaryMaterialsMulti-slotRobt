@@ -16,6 +16,7 @@ public sealed class ManualMoveService
     public MoveUiState State { get; private set; } = MoveUiState.Idle;
     public int? TargetDestination { get; private set; }
     public string? LastMessage { get; private set; }
+    public bool WaitingForChargeDeparture { get; private set; }
 
     public ManualMoveService(IAgvDispatchClient client, AgvDispatchOptions options, ISlotControlService slots, AgvControlLoop loop)
     {
@@ -36,9 +37,18 @@ public sealed class ManualMoveService
 
         TargetDestination = destination;
         State = MoveUiState.Sending;
-        var tick = await _loop.TickAsync(destination, ct).ConfigureAwait(false);
+        AgvLoopTickResult tick;
+        try { tick = await _loop.TickAsync(destination, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            State = MoveUiState.Failed;
+            LastMessage = $"发车请求失败：{ex.Message}";
+            return (false, LastMessage);
+        }
         if (string.Equals(tick.ExecutedAction, "CreateMoveOrder", StringComparison.Ordinal))
         {
+            WaitingForChargeDeparture = false;
             State = MoveUiState.Moving;
             LastMessage = string.IsNullOrWhiteSpace(tick.CreatedOrderId)
                 ? "已下发移动单"
@@ -46,9 +56,34 @@ public sealed class ManualMoveService
             return (true, LastMessage);
         }
 
+        if (tick.ExecutedAction is "CancelChargeOrder" or "AwaitChargeOrderRelease")
+        {
+            WaitingForChargeDeparture = true;
+            LastMessage = "已请求结束充电，订单释放后自动前往所选作业站。";
+            return (true, LastMessage);
+        }
+
+        if (tick.ExecutedAction == "AlreadyAtDestination")
+        {
+            WaitingForChargeDeparture = false;
+            State = MoveUiState.Arrived;
+            LastMessage = "已到达所选作业站。";
+            return (true, LastMessage);
+        }
+
         State = MoveUiState.Failed;
         LastMessage = tick.Evaluation.Reason;
         return (false, LastMessage);
+    }
+
+    public async Task<string?> ContinueChargeDepartureAsync(CancellationToken ct = default)
+    {
+        if (!WaitingForChargeDeparture || TargetDestination is not > 0) return null;
+        var target = TargetDestination.Value;
+        var result = await RequestMoveAsync(target, ct).ConfigureAwait(false);
+        // 等待中的门态/订单/就绪失败保留请求；用户可用取消按钮撤销。
+        if (!result.Ok) State = MoveUiState.Sending;
+        return result.Message;
     }
 
     public async Task RefreshAsync(CancellationToken ct = default)
@@ -63,6 +98,7 @@ public sealed class ManualMoveService
     {
         _loop.ResetCallState();
         TargetDestination = null;
+        WaitingForChargeDeparture = false;
         State = MoveUiState.Idle;
         LastMessage = null;
     }
@@ -70,7 +106,8 @@ public sealed class ManualMoveService
     private void ApplySnapshot(AgvDispatch.Sdk.Models.VehicleSnapshot snap)
     {
         var v = snap.Vehicle;
-        if (string.IsNullOrWhiteSpace(v.OrderTaskId) && State is MoveUiState.Arrived or MoveUiState.Moving)
+        if (string.IsNullOrWhiteSpace(v.OrderTaskId) && !_loop.DispatchPending
+            && State is MoveUiState.Arrived or MoveUiState.Moving)
             ResetSession();
 
         var pos = v.CurrentPosition;

@@ -29,6 +29,9 @@ public sealed class AgvStateThresholds
     /// <summary>订单已下待执行（原 order_state == 1）。</summary>
     public int OrderStatePending { get; set; } = 1;
 
+    /// <summary>现场确认的订单完成状态码；未确认时只依完成时间判断，不猜状态码。</summary>
+    public IList<int> CompletedOrderStates { get; set; } = new List<int>();
+
     /// <summary>充电中不可下单（原 CHARGING）。</summary>
     public IList<string> ChargingSysStates { get; set; } = new List<string> { "CHARGING" };
 

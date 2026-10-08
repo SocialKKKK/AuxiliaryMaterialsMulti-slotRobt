@@ -1,4 +1,4 @@
-﻿using AgvDispatch.Sdk;
+using AgvDispatch.Sdk;
 using AgvDispatch.Sdk.Models;
 using Microsoft.Extensions.Configuration;
 using WireCabinet.Core.Config;
@@ -22,6 +22,7 @@ public sealed class AgvServices : IDisposable
     private IAgvDispatchClient? _client;
     private VehicleSnapshot _lastSnapshot = new();
     private bool _startupCleanupDone;
+    private readonly SemaphoreSlim _commands = new(1, 1);
 
     public StationConfiguration Stations { get; }
     public AgvOrderGate OrderGate => _orderGate;
@@ -50,7 +51,10 @@ public sealed class AgvServices : IDisposable
     public bool HasActiveOrder { get; private set; }
     public bool HasBlockingOrder { get; private set; }
     public string LastOrderStateDisplay { get; private set; } = "—";
-    public bool CanPlaceMoveOrChargeOrder { get; private set; }
+    public bool CanPlaceMoveOrder { get; private set; }
+    public bool CanPlaceChargeOrder { get; private set; }
+    public bool CanPlaceMoveOrChargeOrder => CanPlaceMoveOrder || CanPlaceChargeOrder;
+    public string? DispatchBlockReason { get; private set; }
     public bool CanCancelActiveOrder { get; private set; }
     public bool CanReleaseEmergency { get; private set; }
     public int? LastWorkStationBeforeCharge { get; set; }
@@ -81,7 +85,7 @@ public sealed class AgvServices : IDisposable
         if (_options.VehicleQueryDeviceIds.Length == 0)
             _options.VehicleQueryDeviceIds = [0];
 
-        _orderGate = new AgvOrderGate(_options.StateThresholds, () => ControlLoop?.CallInProgress ?? false);
+        _orderGate = new AgvOrderGate(_options.StateThresholds, () => ControlLoop?.CallInProgress ?? false, _options);
 
         IsConfigured = IsAgvConfigComplete(config);
         if (!IsConfigured)
@@ -95,7 +99,7 @@ public sealed class AgvServices : IDisposable
             _client = AgvDispatchClient.Create(_options);
             ControlLoop = new AgvControlLoop(_client, _options, doors, _orderGate);
             Move = new ManualMoveService(_client, _options, slots, ControlLoop);
-            Charge = new LowBatteryChargeService(_client, _options, _thresholds, _orderGate, Stations, _agvLog);
+            Charge = new LowBatteryChargeService(_client, _options, _thresholds, _orderGate, Stations, _agvLog, slots);
         }
         catch (Exception ex)
         {
@@ -104,7 +108,39 @@ public sealed class AgvServices : IDisposable
         }
     }
 
+    /// <summary>注入客户端与站点，供离线集成验证使用；不加载现场凭据，也不自动连接。</summary>
+    public AgvServices(IAgvDispatchClient client, AgvDispatchOptions options, AgvThresholdOptions thresholds,
+        StationConfiguration stations, ISlotControlService slots, IDoorStateProvider doors,
+        WireCabinet.Data.IOperationLogSink? operationLog = null)
+    {
+        _client = client;
+        _options = options;
+        _thresholds = thresholds;
+        _slots = slots;
+        Stations = stations;
+        _agvLog = new AgvActionLog(operationLog);
+        _orderGate = new AgvOrderGate(options.StateThresholds, () => ControlLoop?.CallInProgress ?? false, options);
+        ControlLoop = new AgvControlLoop(client, options, doors, _orderGate);
+        Move = new ManualMoveService(client, options, slots, ControlLoop);
+        Charge = new LowBatteryChargeService(client, options, thresholds, _orderGate, stations, _agvLog, slots);
+        IsConfigured = true;
+    }
+
     public async Task<bool> ConnectAsync(CancellationToken ct = default)
+    {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await ConnectCoreAsync(ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    public async Task RefreshStatusAsync(CancellationToken ct = default)
+    {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { await RefreshStatusCoreAsync(ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<bool> ConnectCoreAsync(CancellationToken ct)
     {
         if (_client is null) return false;
         try
@@ -112,8 +148,8 @@ public sealed class AgvServices : IDisposable
             await _client.LoginAsync(ct).ConfigureAwait(false);
             IsConnected = true;
             LastError = null;
-            await RefreshStatusAsync(ct).ConfigureAwait(false);
-            return true;
+            await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
+            return IsConnected;
         }
         catch (Exception ex)
         {
@@ -135,7 +171,7 @@ public sealed class AgvServices : IDisposable
         }
     }
 
-    public async Task RefreshStatusAsync(CancellationToken ct = default)
+    private async Task RefreshStatusCoreAsync(CancellationToken ct)
     {
         if (_client is null || !IsConnected) return;
         try
@@ -146,27 +182,35 @@ public sealed class AgvServices : IDisposable
             await _orderGate.ReconcilePendingAsync(_client, snap, ct).ConfigureAwait(false);
             ApplySnapshot(snap);
             Move?.RefreshFromSnapshot(snap);
+            LastError = null;
         }
         catch (Exception ex)
         {
             LastError = ex.Message;
+            IsConnected = false;
+            CanPlaceMoveOrder = CanPlaceChargeOrder = CanCancelActiveOrder = false;
         }
     }
 
     public async Task<(bool Ok, string Message)> MoveToStationAsync(int destination, CancellationToken ct = default)
     {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await MoveToStationCoreAsync(destination, ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<(bool Ok, string Message)> MoveToStationCoreAsync(int destination, CancellationToken ct)
+    {
         if (Move is null) return (false, "RCS 未就绪");
-        if (!IsConnected && !await ConnectAsync(ct).ConfigureAwait(false))
+        if (!Stations.EnabledWorkStations.Any(s => s.RcsDestination == destination))
+            return (false, "请选择已启用的作业站。");
+        if (!IsConnected && !await ConnectCoreAsync(ct).ConfigureAwait(false))
             return (false, LastError ?? "RCS 登录失败");
 
-        if (HasBlockingOrder)
-            return (false, "已有进行中或队列中的订单，请先取消或等待完成。");
-
-        if (!CanPlaceMoveOrChargeOrder)
-            return (false, "仅系统 IDLE 且无进行中订单时可下发移动单。");
-
-        if (_orderGate.BlocksNewOrder(_lastSnapshot, AgvPendingOrderKind.Move))
-            return (false, "当前不可下发移动单，请等待队列中的订单执行。");
+        await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
+        if (!IsConnected) return (false, LastError ?? "RCS 状态刷新失败。");
+        if (Move.WaitingForChargeDeparture) return (false, "已有等待充电结束的移动请求，请等待或取消。");
+        if (!CanPlaceMoveOrder) return (false, DispatchBlockReason ?? "当前不可发车。");
 
         if (destination > 0 && LastPosition == destination)
             return (false, AlreadyAtStationMessage);
@@ -176,11 +220,17 @@ public sealed class AgvServices : IDisposable
             return doorBlock.Value;
 
         var ws = Stations.EnabledWorkStations.FirstOrDefault(s => s.RcsDestination == destination);
-        SetLastWorkStationBeforeCharge(destination);
         var result = await Move.RequestMoveAsync(destination, ct).ConfigureAwait(false);
-        await RefreshStatusAsync(ct).ConfigureAwait(false);
+        if (result.Ok)
+        {
+            SetLastWorkStationBeforeCharge(destination);
+            Charge?.ClearPostChargeReturn(); // 手动所选站点优先，避免默认返航抢先下单。
+        }
+        await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
         var label = ws?.Name ?? destination.ToString();
-        _agvLog.RecordCommand(AgvActionLog.AgvMove, "下达移动单", result.Ok, result.Message, $"→ {label}（站点 {destination}）");
+        _agvLog.RecordCommand(AgvActionLog.AgvMove,
+            Move.WaitingForChargeDeparture ? "已接受结束充电后的移动请求" : "下达移动单",
+            result.Ok, result.Message, $"→ {label}（站点 {destination}）");
         return result.Ok
             ? (true, $"{result.Message} → {label}（站点 {destination}）")
             : (false, result.Message);
@@ -188,19 +238,22 @@ public sealed class AgvServices : IDisposable
 
     public async Task<(bool Ok, string Message)> GoChargeAsync(CancellationToken ct = default)
     {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await GoChargeCoreAsync(ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<(bool Ok, string Message)> GoChargeCoreAsync(CancellationToken ct)
+    {
         if (Charge is null || _options.ChargeDestination <= 0)
             return (false, "未配置充电站点号（stations.yaml / AgvDispatch:ChargeDestination）。");
-        if (!IsConnected && !await ConnectAsync(ct).ConfigureAwait(false))
+        if (!IsConnected && !await ConnectCoreAsync(ct).ConfigureAwait(false))
             return (false, LastError ?? "RCS 登录失败");
 
-        if (HasBlockingOrder)
-            return (false, "已有进行中或队列中的订单，请先取消或等待完成。");
-
-        if (!CanPlaceMoveOrChargeOrder)
-            return (false, "仅系统 IDLE 且无进行中订单时可下充电单。");
-
-        if (_orderGate.BlocksNewOrder(_lastSnapshot, AgvPendingOrderKind.Charge))
-            return (false, "当前不可下充电单，请等待队列中的订单执行。");
+        await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
+        if (!IsConnected) return (false, LastError ?? "RCS 状态刷新失败。");
+        if (!CanPlaceChargeOrder || Move?.WaitingForChargeDeparture == true)
+            return (false, _orderGate.GetBlockReason(_lastSnapshot, AgvPendingOrderKind.Charge) ?? "已有移动请求，请等待或取消。");
 
         if (_options.ChargeDestination > 0
             && LastPosition == _options.ChargeDestination
@@ -213,10 +266,14 @@ public sealed class AgvServices : IDisposable
 
         try
         {
+            var doors = await _slots.GetDoorStateForAgvAsync(ct).ConfigureAwait(false);
+            var ready = AgvReadinessPolicy.Evaluate(_lastSnapshot.Vehicle, _lastSnapshot.Order, doors,
+                _options.StateThresholds, false, ControlLoop?.CallInProgress == true);
+            if (!ready.CanAcceptOrder) return (false, ready.Reason);
             var order = await _client!.CreateChargeOrderAsync(ct).ConfigureAwait(false);
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Charge);
             Charge.RememberReturnDestinationOnChargeDispatch(LastPosition);
-            await RefreshStatusAsync(ct).ConfigureAwait(false);
+            await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
             var name = Stations.ChargeStation?.Name ?? "充电点";
             _agvLog.RecordCommand(AgvActionLog.AgvCharge, "下充电单（自动回充）", ok: true, detail: $"→ {name}（{order.OrderId}）");
             return (true, $"已下充电单 → {name}（{order.OrderId}）");
@@ -230,24 +287,42 @@ public sealed class AgvServices : IDisposable
 
     public async Task<(bool Ok, string Message)> CancelActiveOrderAsync(CancellationToken ct = default)
     {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await CancelActiveOrderCoreAsync(ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<(bool Ok, string Message)> CancelActiveOrderCoreAsync(CancellationToken ct)
+    {
         if (_client is null)
             return (false, "RCS 未就绪");
+
+        if (Move?.WaitingForChargeDeparture == true)
+        {
+            Move.ResetSession();
+            Charge?.ClearPostChargeReturn();
+            EvaluateUiGates(_lastSnapshot);
+            _agvLog.RecordCommand(AgvActionLog.AgvMove, "撤销等待充电结束的移动请求", ok: true);
+            return (true, "已撤销等待充电结束的移动请求。充电订单若仍在取消中，将继续等待其释放。");
+        }
+        await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
+        if (!IsConnected) return (false, LastError ?? "RCS 状态刷新失败。");
 
         var orderId = _orderGate.ResolveCancelOrderId(_lastSnapshot);
         if (string.IsNullOrWhiteSpace(orderId))
             return (false, "当前无进行中订单。");
         if (!CanCancelActiveOrder)
-            return (false, "仅暂停、挂起或队列中的任务可取消。");
+            return (false, "仅暂停、队列中的任务或已识别的充电任务可取消。");
 
         try
         {
             await _client.CancelOrderAsync(orderId, ct).ConfigureAwait(false);
-            _orderGate.ClearPending();
-            ControlLoop?.ResetCallState();
+            _orderGate.RecordCancellationRequested(orderId, wasAssigned: !string.IsNullOrWhiteSpace(_lastSnapshot.Vehicle.OrderTaskId));
             Move?.ResetSession();
-            await RefreshStatusAsync(ct).ConfigureAwait(false);
+            Charge?.ClearPostChargeReturn();
+            await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
             _agvLog.RecordCommand(AgvActionLog.AgvMove, "取消当前订单", ok: true, detail: orderId);
-            return (true, "已取消当前订单。");
+            return (true, "已请求取消当前订单，等待 RCS 确认释放。");
         }
         catch (Exception ex)
         {
@@ -258,6 +333,13 @@ public sealed class AgvServices : IDisposable
 
     public async Task<(bool Ok, string Message)> ReleaseEmergencyAsync(CancellationToken ct = default)
     {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await ReleaseEmergencyCoreAsync(ct).ConfigureAwait(false); }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<(bool Ok, string Message)> ReleaseEmergencyCoreAsync(CancellationToken ct)
+    {
         if (_client is null) return (false, "RCS 未就绪");
         if (!CanReleaseEmergency)
             return (false, "当前无需解除急停。");
@@ -265,7 +347,7 @@ public sealed class AgvServices : IDisposable
         try
         {
             await _client.CancelEmergencyAsync(cancellationToken: ct).ConfigureAwait(false);
-            await RefreshStatusAsync(ct).ConfigureAwait(false);
+            await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
             return (true, "已下发解除急停。");
         }
         catch (Exception ex)
@@ -280,10 +362,26 @@ public sealed class AgvServices : IDisposable
         Action<WorkStationConfig>? onArrivedAtStation,
         CancellationToken ct = default)
     {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try { return await PollCycleCoreAsync(navigator, onArrivedAtStation, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            CanPlaceMoveOrder = CanPlaceChargeOrder = CanCancelActiveOrder = false;
+            LastError = ex.Message;
+            return $"RCS 状态刷新失败，已暂停下单：{ex.Message}";
+        }
+        finally { _commands.Release(); }
+    }
+
+    private async Task<string?> PollCycleCoreAsync(AgvArrivalNavigator? navigator,
+        Action<WorkStationConfig>? onArrivedAtStation, CancellationToken ct)
+    {
         if (!IsConfigured) return null;
 
-        if (!IsConnected)
-            await ConnectAsync(ct).ConfigureAwait(false);
+        if (!IsConnected && !await ConnectCoreAsync(ct).ConfigureAwait(false))
+            return LastError ?? "RCS 连接失败，已暂停下单。";
 
         var doorTick = await RunDoorInterlockTickAsync(ct).ConfigureAwait(false);
         LastDoorInterlockTick = doorTick;
@@ -292,7 +390,19 @@ public sealed class AgvServices : IDisposable
         if (IsConnected)
             startupMsg = await EnsureStartupOrderCleanupAsync(ct).ConfigureAwait(false);
 
-        var policyMsg = doorTick?.StatusMessage ?? await RunAutoChargePolicyAsync(ct).ConfigureAwait(false);
+        var policyMsg = doorTick?.StatusMessage;
+        if (policyMsg is null)
+        {
+            if (Move?.WaitingForChargeDeparture == true)
+            {
+                policyMsg = await Move.ContinueChargeDepartureAsync(ct).ConfigureAwait(false);
+                await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
+                if (Move.WaitingForChargeDeparture == false && Move.State == MoveUiState.Moving)
+                    _agvLog.RecordCommand(AgvActionLog.AgvMove, "充电结束后前往所选作业站", ok: true);
+            }
+            else
+                policyMsg = await RunAutoChargePolicyAsync(ct).ConfigureAwait(false);
+        }
         if (startupMsg is not null && policyMsg is null)
             policyMsg = startupMsg;
 
@@ -312,7 +422,7 @@ public sealed class AgvServices : IDisposable
     {
         if (ControlLoop is null || !IsConnected)
         {
-            await RefreshStatusAsync(ct).ConfigureAwait(false);
+            await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
             return null;
         }
 
@@ -343,15 +453,19 @@ public sealed class AgvServices : IDisposable
         if (_slots.HasUnlockInProgress())
             return (false, "存在开锁中，禁止下发移动/充电单。");
 
+        var doors = await _slots.GetDoorStateForAgvAsync(ct).ConfigureAwait(false);
+        if (!doors.AllDoorsClosed && !doors.AnyDoorOpen)
+            return (false, "门态未知，禁止下发移动/充电单。");
+
         var open = await _slots.ListOpenInterlockSlotNosAsync(ct).ConfigureAwait(false);
-        if (open.Count == 0)
+        if (open.Count == 0 && doors.AllDoorsClosed && !doors.AnyDoorOpen)
             return null;
 
         var labels = AgvDoorInterlockAlert.FormatSlotLabels(open);
         return (false, AgvDoorInterlockAlert.BuildDispatchBlockedMessage(labels));
     }
 
-    public async Task<string?> RunAutoChargePolicyAsync(CancellationToken ct = default)
+    private async Task<string?> RunAutoChargePolicyAsync(CancellationToken ct = default)
     {
         if (Charge is null || !IsConnected || _client is null) return null;
 
@@ -372,10 +486,10 @@ public sealed class AgvServices : IDisposable
             var ret = await Charge.TryReturnToWorkStationAsync(snap, ct).ConfigureAwait(false);
             if (ret is not null)
                 ApplySnapshot(snap);
-            return ret;
+            return ret ?? (Charge.LastBlockReason is { } reason ? $"返航等待：{reason}" : null);
         }
 
-        return null;
+        return Charge.LastBlockReason is { } block ? $"回充等待：{block}" : null;
     }
 
     private async Task<string?> EnsureStartupOrderCleanupAsync(CancellationToken ct)
@@ -383,56 +497,12 @@ public sealed class AgvServices : IDisposable
         if (_startupCleanupDone || _client is null)
             return null;
 
-        _startupCleanupDone = true;
         var snap = await _client.GetVehicleSnapshotAsync(cancellationToken: ct).ConfigureAwait(false);
-        var thresholds = _options.StateThresholds;
-        var canceled = new List<string>();
-
-        var isIdle = thresholds.IdleSysStates.Contains(snap.Vehicle.SysState ?? "", StringComparer.OrdinalIgnoreCase);
-        var orderId = snap.Vehicle.OrderTaskId;
-
-        if (isIdle)
-        {
-            if (!string.IsNullOrWhiteSpace(orderId))
-            {
-                try
-                {
-                    await _client.CancelOrderAsync(orderId, ct).ConfigureAwait(false);
-                    canceled.Add(orderId);
-                }
-                catch (Exception ex)
-                {
-                    return $"启动清理订单失败：{ex.Message}";
-                }
-            }
-            else if (snap.Order is not null
-                     && snap.Order.EffectiveOrderState == thresholds.OrderStateCanceled
-                     && !string.IsNullOrWhiteSpace(snap.Order.UpperId))
-            {
-                try
-                {
-                    await _client.CancelOrderAsync(snap.Order.UpperId, ct).ConfigureAwait(false);
-                    canceled.Add(snap.Order.UpperId);
-                }
-                catch
-                {
-                    // 无有效 orderId 时忽略
-                }
-            }
-
-            _orderGate.ClearPending();
-            ControlLoop?.ResetCallState();
-            Move?.ResetSession();
-        }
-
+        ApplySnapshot(snap);
         Charge?.BootstrapExternalChargeSession(snap);
-        await RefreshStatusAsync(ct).ConfigureAwait(false);
-
-        if (!isIdle && !string.IsNullOrWhiteSpace(orderId))
+        _startupCleanupDone = true;
+        if (!string.IsNullOrWhiteSpace(snap.Vehicle.OrderTaskId))
             return "车辆任务执行中，保留当前订单。";
-
-        if (canceled.Count > 0)
-            return $"启动已清除历史订单：{string.Join(", ", canceled)}";
 
         if (Charge?.PostChargeReturnPending == true)
         {
@@ -460,6 +530,7 @@ public sealed class AgvServices : IDisposable
     {
         _lastSnapshot = snap;
         _orderGate.ApplySnapshot(snap);
+        Charge?.ObserveSnapshot(snap);
 
         var v = snap.Vehicle;
         LastBatteryPercent = v.Battery;
@@ -487,11 +558,12 @@ public sealed class AgvServices : IDisposable
         var v = snap.Vehicle;
         var thresholds = _options.StateThresholds;
 
-        CanPlaceMoveOrChargeOrder = IsConnected
-                                    && string.Equals(v.SysState, "IDLE", StringComparison.OrdinalIgnoreCase)
-                                    && !HasBlockingOrder;
-
-        CanCancelActiveOrder = _orderGate.CanCancelOrder(snap);
+        DispatchBlockReason = _orderGate.GetBlockReason(snap, AgvPendingOrderKind.Move);
+        CanPlaceMoveOrder = IsConnected && Move?.WaitingForChargeDeparture != true
+            && (DispatchBlockReason is null || _orderGate.CanEndChargingOrder(snap));
+        CanPlaceChargeOrder = IsConnected && Move?.WaitingForChargeDeparture != true
+            && !_orderGate.BlocksNewOrder(snap, AgvPendingOrderKind.Charge);
+        CanCancelActiveOrder = IsConnected && (Move?.WaitingForChargeDeparture == true || _orderGate.CanCancelOrder(snap));
 
         var sysError = thresholds.ErrorSysStates.Contains(v.SysState ?? "", StringComparer.OrdinalIgnoreCase);
         var emgActive = !string.IsNullOrWhiteSpace(v.EmergencyState)

@@ -53,6 +53,12 @@ public sealed class OrderDetailDto
     [JsonPropertyName("doneTime")]
     public string? DoneTime { get; set; }
 
+    [JsonPropertyName("done_time")]
+    public string? DoneTimeSnake { get; set; }
+
+    [JsonIgnore]
+    public string? EffectiveDoneTime => string.IsNullOrWhiteSpace(DoneTime) ? DoneTimeSnake : DoneTime;
+
     [JsonPropertyName("startStationName")]
     public string? StartStationName { get; set; }
 

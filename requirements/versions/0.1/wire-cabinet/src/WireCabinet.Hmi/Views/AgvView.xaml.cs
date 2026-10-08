@@ -101,12 +101,12 @@ public partial class AgvView : UserControl
         var stations = Agv.Stations.EnabledWorkStations.Any();
         var chgOk = Agv.Stations.ChargeStation is { Enabled: true, RcsDestination: > 0 };
         var moveLocked = App.UiGate.MovementControlsLocked;
-        var canMove = Agv.IsConfigured && Agv.IsConnected && stations && Agv.CanPlaceMoveOrChargeOrder && !moveLocked;
-        var canCharge = Agv.IsConfigured && Agv.IsConnected && chgOk && Agv.CanPlaceMoveOrChargeOrder && !moveLocked;
+        var canMove = Agv.IsConfigured && Agv.IsConnected && stations && Agv.CanPlaceMoveOrder && !moveLocked;
+        var canCharge = Agv.IsConfigured && Agv.IsConnected && chgOk && Agv.CanPlaceChargeOrder && !moveLocked;
 
         MoveBtn.IsEnabled = canMove;
         ChargeBtn.IsEnabled = canCharge;
-        StationCombo.IsEnabled = canMove || canCharge;
+        StationCombo.IsEnabled = canMove;
         CancelOrderBtn.IsEnabled = Agv.IsConfigured && Agv.IsConnected && Agv.CanCancelActiveOrder;
         ReleaseEmergencyBtn.IsEnabled = Agv.IsConfigured && Agv.IsConnected && Agv.CanReleaseEmergency;
     }

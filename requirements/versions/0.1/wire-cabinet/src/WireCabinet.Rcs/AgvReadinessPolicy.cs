@@ -16,21 +16,29 @@ public static class AgvReadinessPolicy
         bool callInProgress)
     {
         var baseResult = AgvOperationEvaluator.Evaluate(vehicle, order, doors, thresholds, previouslyPausedForDoor, callInProgress);
-        if (vehicle.SysState is null || !vehicle.SysState.Equals("CHARGING", StringComparison.OrdinalIgnoreCase))
+        if (HasEmergency(vehicle, thresholds))
+            return new AgvReadinessResult { Reason = "车辆急停未解除，禁止下单。" };
+
+        if (!thresholds.ChargingSysStates.Contains(vehicle.SysState ?? "", StringComparer.OrdinalIgnoreCase))
             return baseResult;
 
-        if (doors.AnyDoorOpen || previouslyPausedForDoor)
+        if (!doors.AllDoorsClosed || doors.AnyDoorOpen || previouslyPausedForDoor
+            || !string.IsNullOrWhiteSpace(vehicle.OrderTaskId) || baseResult.RecommendsCancelOrder)
             return baseResult;
 
-        return new AgvReadinessResult
+        // 只放宽系统的充电态，仍由 SDK 检查在线、移动/进程就绪、门态与呼叫互斥。
+        var departure = AgvOperationEvaluator.Evaluate(new VehicleInfoDto
         {
-            CanAcceptOrder = !callInProgress,
-            ShouldPauseForDoor = baseResult.ShouldPauseForDoor,
-            ShouldContinueAfterDoorClosed = baseResult.ShouldContinueAfterDoorClosed,
-            RecommendsCancelOrder = baseResult.RecommendsCancelOrder,
-            HasActiveOrderBlockingNewOrder = callInProgress,
-            RecommendedAction = callInProgress ? AgvRecommendedAction.None : AgvRecommendedAction.CreateMoveOrder,
-            Reason = callInProgress ? "充电中，已有订单执行中" : "充电中，允许手动控车离站/移站"
-        };
+            Enable = vehicle.Enable,
+            SysState = thresholds.IdleSysStates.FirstOrDefault() ?? "IDLE",
+            ActionState = vehicle.ActionState,
+            MovementState = vehicle.MovementState,
+            ProcState = vehicle.ProcState
+        }, order, doors, thresholds, callInProgress: callInProgress);
+        return departure;
     }
+
+    public static bool HasEmergency(VehicleInfoDto vehicle, AgvStateThresholds thresholds) =>
+        !string.IsNullOrWhiteSpace(vehicle.EmergencyState)
+        && thresholds.EmergencyActiveContains.Any(s => vehicle.EmergencyState.Contains(s, StringComparison.OrdinalIgnoreCase));
 }

@@ -9,8 +9,7 @@
 
   <!--
     只引用非 WPF 层：WireCabinet.Hmi 是 net8.0-windows，net8.0 测试工程无法引用。
-    因此挂在 Hmi 里的逻辑（MhDoorOnlyService / AgvServices）暂不可自动化测试，
-    需要覆盖时先把判定逻辑下沉到 Slots / Rcs。
+    Windows 上的 AgvServices 集成验证由独立 WireCabinet.Hmi.Tests 工程覆盖。
   -->
   <ItemGroup>
     <ProjectReference Include="..\WireCabinet.Core\WireCabinet.Core.csproj" />

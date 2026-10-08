@@ -283,7 +283,20 @@ public sealed class AgvDispatchClient : IAgvDispatchClient, IDisposable
     private static Task EnsureSuccessAsync(HttpResponseMessage response, string raw, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return Task.CompletedTask;
+            // RCS 会用 HTTP 200 返回业务失败，取消/暂停等命令也必须检查 code。
+            using var json = JsonDocument.Parse(raw);
+            if (json.RootElement.ValueKind == JsonValueKind.Object
+                && json.RootElement.TryGetProperty("code", out var code)
+                && code.ValueKind is not JsonValueKind.Null
+                && code.ToString() != "0")
+            {
+                var message = json.RootElement.TryGetProperty("message", out var msg) ? msg.ToString() : "RCS 拒绝操作";
+                throw new AgvDispatchException($"RCS 操作失败：{message}", (int)response.StatusCode, code.ToString(), message, raw);
+            }
             return Task.CompletedTask;
+        }
 
         DispatchApiResponse<object>? err = null;
         try
@@ -323,7 +336,8 @@ public sealed class AgvDispatchClient : IAgvDispatchClient, IDisposable
             return wrapped.Result;
 
         var direct = JsonSerializer.Deserialize<OrderDetailDto>(raw, AgvDispatchJson.SerializerOptions);
-        if (direct != null)
+        if (direct != null && (direct.Id != 0 || direct.UpperId is not null
+            || direct.EffectiveOrderState != 0 || direct.EffectiveDoneTime is not null))
             return direct;
 
         throw new AgvDispatchException("Unable to deserialize order detail.", null, null, null, raw);

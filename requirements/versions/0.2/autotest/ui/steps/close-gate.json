@@ -1,0 +1,9 @@
+{
+  "name": "close-gate",
+  "comment": "One-step recovery: dismiss a leftover modal password gate (it blocks UIA InvokePattern on the main window). Clicks 取消 only.",
+  "steps": [
+    { "action": "click", "target": { "name": "取消", "controlType": "Button", "scope": "foreground" }, "timeoutMs": 3000, "optional": true },
+    { "action": "sleep", "ms": 700 },
+    { "action": "screenshot", "out": "00-after-cancel.png" }
+  ]
+}

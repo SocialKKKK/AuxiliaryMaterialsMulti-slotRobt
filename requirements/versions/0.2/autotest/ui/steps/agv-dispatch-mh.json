@@ -1,0 +1,17 @@
+{
+  "name": "agv-dispatch-mh",
+  "comment": "REAL VEHICLE MOVEMENT. Sends the cabinet from the charge point (520) to the material-handler station. The target combo already shows 物料间焊丝柜（MH）, so this only presses 前往所选作业站 and handles an optional confirm dialog. Does not touch 取消当前任务 / 解除急停 / 前往充电点.",
+  "steps": [
+    { "action": "screenshot", "out": "00-before.png" },
+    { "action": "dump", "out": "tree-before.json", "max": 200 },
+
+    { "action": "click", "target": { "automationId": "MoveBtn" }, "timeoutMs": 8000 },
+    { "action": "sleep", "ms": 4000 },
+    { "action": "screenshot", "out": "01-after-move.png" },
+
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 6000 },
+    { "action": "screenshot", "out": "02-final.png" },
+    { "action": "dump", "out": "tree-after.json", "max": 300 }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "name": "op-return-issue",
+  "comment": "操作员存废取新：归还旧焊丝 → 领用新焊丝（取出记录由流程在关门后单独写）。真实业务动作。本机 mock 下 IO 不可达，业务结果需现场断言；此处验证自动化机制。",
+  "vars": {
+    "opId": "1001",
+    "returnLot": "14Z1888-0777",
+    "issueLot": "14Z1999-0001",
+    "eqpNo": "1QH029",
+    "remainQty": "5"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOp" } },
+    { "action": "sleep", "ms": 400 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{mhPassword}}", "timeoutMs": 2500, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1200 },
+
+    { "action": "assertexists", "target": { "automationId": "OpIdBox" } },
+    { "action": "settext", "target": { "automationId": "OpIdBox" }, "value": "{{opId}}" },
+    { "action": "click", "target": { "automationId": "ValidateOpBtn" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "01-op-validated.png" },
+
+    { "action": "settext", "target": { "automationId": "WireLotBox" }, "value": "{{returnLot}}" },
+    { "action": "click", "target": { "automationId": "QueryWireBtn" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "settext", "target": { "automationId": "EqpNoBox" }, "value": "{{eqpNo}}" },
+    { "action": "click", "target": { "automationId": "ValidateEqpBtn" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "settext", "target": { "automationId": "RemainingQtyBox" }, "value": "{{remainQty}}" },
+    { "action": "click", "target": { "automationId": "ConfirmQuotaBtn" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "02-return-ready.png" },
+    { "action": "click", "target": { "automationId": "SubmitReturnBtn" } },
+    { "action": "sleep", "ms": 5000 },
+    { "action": "screenshot", "out": "03-return-submitted.png" },
+
+    { "action": "click", "target": { "name": "确认", "controlType": "Button", "scope": "foreground" }, "timeoutMs": 1500, "optional": true },
+    { "action": "sleep", "ms": 800 },
+
+    { "action": "settext", "target": { "automationId": "IssueLotBox" }, "value": "{{issueLot}}" },
+    { "action": "click", "target": { "automationId": "ValidateIssueLotBtn" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "04-issue-ready.png" },
+    { "action": "click", "target": { "automationId": "SubmitIssueBtn" } },
+    { "action": "sleep", "ms": 5000 },
+    { "action": "screenshot", "out": "05-issue-submitted.png" },
+    { "action": "dump", "out": "tree-final.json", "max": 250 },
+
+    { "action": "asserttext", "target": { "automationId": "StatusText" }, "value": ".", "mode": "regex" }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "site-agv-read",
+  "comment": "Open the product's own AGV page and capture it. That page computes vehicle readiness (AgvReadinessPolicy) and shows why an order can or cannot be dispatched, which is exactly what the RCS API does not tell us. Read-only: no button is pressed.",
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbAgv" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "01-agv-page.png" },
+    { "action": "dump", "out": "tree-agv.json", "max": 300 },
+    { "action": "sleep", "ms": 2000 },
+    { "action": "screenshot", "out": "02-agv-page.png" }
+  ]
+}

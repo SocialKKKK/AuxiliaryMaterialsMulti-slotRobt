@@ -1,0 +1,21 @@
+{
+    "ok":  true,
+    "error":  null,
+    "process":  "WireCabinet.Hmi",
+    "startedAt":  "2026-10-09T14:16:55",
+    "endedAt":  "2026-10-09T14:16:57",
+    "steps":  [
+                  {
+                      "i":  1,
+                      "action":  "clickpoint",
+                      "ok":  true,
+                      "detail":  "clicked at window 829,27 (abs 829,27)"
+                  },
+                  {
+                      "i":  2,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "00-gate.png 1024x728"
+                  }
+              ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "mesrecon-manual-roundtrip",
+  "comment": "Site. Validates the MES REAL-DB WRITE path with a net-zero round trip: SET DISCOEQPNO then NULL it back, on a lot that is 归还/焊丝 in v_fw_material_indetail and DISCOEQPNO IS NULL in fw_material_indetail. Nothing else is clicked - no repair enqueue, no snapshot clearing. The message box text is captured as proof the UPDATE affected 1 row (0 rows would report 'SET 未生效（影响 0 行）').",
+  "vars": {
+    "lot": "152609CD01-001-015"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbMesRecon" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "00-before.png" },
+
+    { "action": "settext", "target": { "automationId": "ManualLotBox" }, "value": "{{lot}}" },
+    { "action": "sleep", "ms": 400 },
+    { "action": "screenshot", "out": "01-lot-filled.png" },
+
+    { "action": "click", "target": { "name": "SET 为车名", "controlType": "Button" } },
+    { "action": "sleep", "ms": 3000 },
+    { "action": "screenshot", "out": "02-set-dialog.png" },
+    { "action": "dump", "out": "tree-set-dialog.json", "max": 250 },
+
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "03-after-set.png" },
+    { "action": "dump", "out": "tree-after-set.json", "max": 400 },
+
+    { "action": "click", "target": { "name": "NULL", "controlType": "Button" } },
+    { "action": "sleep", "ms": 3000 },
+    { "action": "screenshot", "out": "04-null-dialog.png" },
+
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "05-after-null.png" },
+    { "action": "dump", "out": "tree-after-null.json", "max": 400 }
+  ]
+}

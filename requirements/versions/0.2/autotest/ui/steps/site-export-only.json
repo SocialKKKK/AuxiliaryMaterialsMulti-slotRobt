@@ -1,0 +1,27 @@
+{
+  "name": "site-export-only",
+  "comment": "Export-only retry against a path whose directory definitely exists. Opening the record page writes the expected view_operation_log record; a successful export writes export_operation_log and lands an .xlsx.",
+  "vars": {
+    "maintPassword": "S0020310",
+    "exportPath": "C:\\autotest\\runs\\oplog-real.xlsx"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 2000 },
+    { "action": "assertexists", "target": { "automationId": "RecordList" } },
+    { "action": "screenshot", "out": "01-list.png" },
+
+    { "action": "click", "target": { "automationId": "ExportBtn" } },
+    { "action": "sleep", "ms": 3000 },
+    { "action": "screenshot", "out": "02-dialog.png" },
+    { "action": "settext", "target": { "automationId": "1001", "scope": "foreground" }, "value": "{{exportPath}}", "useClipboard": true, "timeoutMs": 5000 },
+    { "action": "sleep", "ms": 500 },
+    { "action": "key", "value": "{ENTER}" },
+    { "action": "sleep", "ms": 3500 },
+    { "action": "screenshot", "out": "03-after-export.png" },
+    { "action": "dump", "out": "tree-after.json", "max": 300 }
+  ]
+}

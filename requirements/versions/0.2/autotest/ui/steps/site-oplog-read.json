@@ -1,0 +1,22 @@
+{
+  "name": "site-oplog-read",
+  "comment": "Site, read-only. Opens the material log page (the access gate asks for the maintenance or MH password - the step is optional so the same file also works on a machine with the gate disabled), screenshots it, checks the page really rendered, and dumps the automation tree for later assertions. The only record it produces is the expected 'view log' entry.",
+  "vars": {
+    "maintPassword": "S0020310"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 900 },
+    { "action": "screenshot", "out": "01-after-tab-click.png" },
+
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "02-oplog-unlocked.png" },
+
+    { "action": "assertexists", "target": { "automationId": "RecordList" } },
+    { "action": "assertexists", "target": { "automationId": "ExportBtn" } },
+    { "action": "asserttext", "target": { "automationId": "SummaryText" }, "value": ".", "mode": "regex" },
+    { "action": "dump", "out": "tree-oplog.json", "max": 300 }
+  ]
+}

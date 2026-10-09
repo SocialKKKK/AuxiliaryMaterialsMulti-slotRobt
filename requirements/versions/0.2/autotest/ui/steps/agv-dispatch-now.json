@@ -1,0 +1,20 @@
+{
+  "name": "agv-dispatch-now",
+  "comment": "REAL VEHICLE MOVEMENT, urgent. Cancels the auto-issued charge order, then immediately presses 前往所选作业站 for the pre-selected target 物料间焊丝柜（MH）, before the app's 5s auto-charge re-evaluation can disable the button again.",
+  "steps": [
+    { "action": "screenshot", "out": "00-before.png" },
+
+    { "action": "click", "target": { "automationId": "CancelOrderBtn" }, "timeoutMs": 8000 },
+    { "action": "sleep", "ms": 500 },
+    { "action": "screenshot", "out": "01-after-cancel.png" },
+
+    { "action": "click", "target": { "automationId": "MoveBtn" }, "timeoutMs": 8000 },
+    { "action": "sleep", "ms": 3000 },
+    { "action": "screenshot", "out": "02-after-move.png" },
+
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 4000 },
+    { "action": "screenshot", "out": "03-final.png" },
+    { "action": "dump", "out": "tree-after.json", "max": 300 }
+  ]
+}

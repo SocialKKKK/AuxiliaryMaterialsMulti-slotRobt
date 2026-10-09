@@ -1,0 +1,36 @@
+{
+  "steps": [
+    {
+      "max": 350,
+      "scope": "desktop",
+      "out": "tree-desktop.json",
+      "action": "dump"
+    },
+    {
+      "target": {
+        "automationId": "RbAgv"
+      },
+      "optional": true,
+      "action": "click"
+    },
+    {
+      "value": "guard",
+      "target": {
+        "automationId": "DefinitelyMissingUpgradeInput"
+      },
+      "optional": true,
+      "timeoutMs": 100,
+      "action": "settext"
+    },
+    {
+      "value": "{ENTER}",
+      "optional": true,
+      "action": "key"
+    },
+    {
+      "action": "screenshot",
+      "out": "01-current.png"
+    }
+  ],
+  "name": "upgrade-readonly-modal-and-key-guard"
+}

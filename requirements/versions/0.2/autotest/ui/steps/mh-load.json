@@ -1,0 +1,112 @@
+{
+  "name": "mh-load",
+  "comment": "MH 存料：填工号 + 批号 → 点「输入焊丝」。这是真实业务动作（会开门、写记录、可能写 MES）。本机 mock 下 IO 模块不可达，所以业务断言在现场才有意义；此处只验证自动化机制（控件定位、输入、点击、弹窗处理、截图）。",
+  "vars": {
+    "operatorId": "1001",
+    "lot": "14Z1999-0001"
+  },
+  "steps": [
+    {
+      "action": "click",
+      "target": {
+        "automationId": "RbMh"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 400
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "PasswordBox",
+        "scope": "foreground"
+      },
+      "value": "{{mhPassword}}",
+      "timeoutMs": 2500,
+      "optional": true
+    },
+    {
+      "action": "key",
+      "value": "{ENTER}",
+      "optional": true
+    },
+    {
+      "action": "sleep",
+      "ms": 1200
+    },
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "OperatorIdBox"
+      }
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "OperatorIdBox"
+      },
+      "value": "{{operatorId}}"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "WireLotBox"
+      },
+      "value": "{{lot}}"
+    },
+    {
+      "action": "sleep",
+      "ms": 300
+    },
+    {
+      "action": "screenshot",
+      "out": "01-filled.png"
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "DepositActionBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 4000
+    },
+    {
+      "action": "screenshot",
+      "out": "02-after-submit.png"
+    },
+    {
+      "action": "dump",
+      "out": "tree-after-submit.json",
+      "max": 200
+    },
+    {
+      "action": "click",
+      "target": {
+        "name": "确认",
+        "controlType": "Button",
+        "scope": "foreground"
+      },
+      "timeoutMs": 1500,
+      "optional": true
+    },
+    {
+      "action": "sleep",
+      "ms": 800
+    },
+    {
+      "action": "screenshot",
+      "out": "03-final.png"
+    },
+    {
+      "action": "asserttext",
+      "target": {
+        "automationId": "StatusText"
+      },
+      "value": ".",
+      "mode": "regex"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "操作员存废取新（现场用）。口径优化 2026-10-09 后一次完整流程产生**恰好 2 条**：归还 1 条、",
+    "「领用并取出」1 条（领用与取出合并）；门时刻是这两条上的字段（关门确认后回填），不再单独写门事件。",
+    "注意：这一步要求现场 MES 可用（OpView 每个动作都要求 MesReady），本机 mock 跑不了。"
+  ],
+  "since_utc": "REPLACE_WITH_TS_BEFORE_THE_ACTION",
+  "counts": {
+    "op_return_wire": 1,
+    "op_issue_available_wire": 1
+  },
+  "min_counts": {},
+  "forbid_action_types": [
+    "door_open",
+    "door_close",
+    "op_take_wire"
+  ],
+  "failures_need_error_info": [
+    "op_return_wire",
+    "op_issue_available_wire"
+  ],
+  "require_paired_doors": true,
+  "require_utc_storage": true,
+  "max_pending": 0
+}

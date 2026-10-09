@@ -1,0 +1,21 @@
+{
+    "ok":  true,
+    "error":  null,
+    "process":  "WireCabinet.Hmi",
+    "startedAt":  "2026-10-09T13:42:46",
+    "endedAt":  "2026-10-09T13:42:48",
+    "steps":  [
+                  {
+                      "i":  1,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "00-current.png 1024x728"
+                  },
+                  {
+                      "i":  2,
+                      "action":  "dump",
+                      "ok":  true,
+                      "detail":  "tree.json (190 entries)"
+                  }
+              ]
+}

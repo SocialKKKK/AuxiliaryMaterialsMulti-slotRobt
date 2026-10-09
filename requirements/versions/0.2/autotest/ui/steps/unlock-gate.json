@@ -1,0 +1,14 @@
+{
+  "name": "unlock-gate",
+  "comment": "Dismiss a leftover maintenance password gate by entering the password (maintenance and MES-reconciliation tabs share this gate). Unlocking also prevents the gate from re-appearing on the next tab click.",
+  "vars": {
+    "maintPassword": "S0020310"
+  },
+  "steps": [
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "00-unlocked.png" },
+    { "action": "dump", "out": "tree-unlocked.json", "max": 200 }
+  ]
+}

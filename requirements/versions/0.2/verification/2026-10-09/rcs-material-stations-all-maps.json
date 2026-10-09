@@ -1,0 +1,18 @@
+﻿[
+    {
+        "mapId":  22,
+        "mapName":  "新厂前线",
+        "stationId":  597,
+        "stationName":  "站点597",
+        "x":  21310.0,
+        "y":  -56670.0
+    },
+    {
+        "mapId":  12,
+        "mapName":  "老厂前线",
+        "stationId":  209,
+        "stationName":  "WB物料间",
+        "x":  -6580.0,
+        "y":  26050.0
+    }
+]

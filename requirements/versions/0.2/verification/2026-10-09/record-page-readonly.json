@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "RecordList"
+      },
+      "timeoutMs": 1500
+    },
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "ExportBtn"
+      },
+      "timeoutMs": 1500
+    },
+    {
+      "action": "screenshot",
+      "out": "00-records.png"
+    },
+    {
+      "max": 300,
+      "out": "tree-records.json",
+      "action": "dump"
+    }
+  ],
+  "name": "upgrade-record-page-readonly"
+}

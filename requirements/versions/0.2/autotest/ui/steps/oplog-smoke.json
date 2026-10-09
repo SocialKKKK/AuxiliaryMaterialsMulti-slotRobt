@@ -1,0 +1,38 @@
+{
+  "name": "oplog-smoke",
+  "comment": "Local smoke test for uidriver.ps1: tab navigation, text entry, filter query, reset, UI-state assertions, screenshot, tree dump. Uses a lot number that does not exist locally, so the 'no matching records' caption is the expected outcome; press 重置 and the pager caption must come back.",
+  "vars": {
+    "lot": "TEST-LOT-DOES-NOT-EXIST",
+    "operator": "A001"
+  },
+  "steps": [
+    { "action": "wait", "target": { "automationId": "RbOpLog" }, "timeoutMs": 8000 },
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 800 },
+    { "action": "screenshot", "out": "01-oplog.png" },
+
+    { "action": "click", "target": { "automationId": "RbMh" } },
+    { "action": "sleep", "ms": 800 },
+    { "action": "assertexists", "target": { "automationId": "OperatorIdBox" } },
+    { "action": "settext", "target": { "automationId": "OperatorIdBox" }, "value": "{{operator}}" },
+    { "action": "settext", "target": { "automationId": "WireLotBox" }, "value": "{{lot}}" },
+    { "action": "screenshot", "out": "02-mh-filled.png" },
+
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 800 },
+    { "action": "assertexists", "target": { "automationId": "RecordList" } },
+    { "action": "assertexists", "target": { "automationId": "ExportBtn" } },
+
+    { "action": "settext", "target": { "automationId": "LotNoBox" }, "value": "{{lot}}" },
+    { "action": "click", "target": { "name": "查询", "controlType": "Button" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "03-search-no-match.png" },
+    { "action": "asserttext", "target": { "automationId": "SummaryText" }, "value": "无匹配记录", "mode": "contains" },
+
+    { "action": "click", "target": { "name": "重置", "controlType": "Button" } },
+    { "action": "sleep", "ms": 800 },
+    { "action": "screenshot", "out": "04-reset.png" },
+    { "action": "asserttext", "target": { "automationId": "SummaryText" }, "value": "第\\s*1\\s*页", "mode": "regex" },
+    { "action": "dump", "out": "tree-main.json", "max": 300 }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "开门相关（现场用）：MH 打开可用焊丝格口 / 维护页打开前柜。**真实开门**，执行前需人工放行并清场。",
+    "口径优化 2026-10-09：一次批量开门 = **一条** mh_open_slots_batch（slot_count + detail.slots），",
+    "关门后把 door_close_ts 回填到同一条上；「开门即清空」降级为 is_cleared + detail.cleared_lots，不再单独成条。",
+    "把 counts.mh_open_slots_batch 改成你预期的批量次数，或先用 min_counts。",
+    "本机 mock 下 IO 不可达，开门会失败并留一条 result=失败 + error_info 的记录（已验证）。"
+  ],
+  "since_utc": "REPLACE_WITH_TS_BEFORE_THE_ACTION",
+  "counts": {},
+  "min_counts": {
+    "mh_open_slots_batch": 1
+  },
+  "failures_need_error_info": [
+    "mh_open_slots_batch",
+    "maint_trial_open"
+  ],
+  "require_paired_doors": true,
+  "require_utc_storage": true,
+  "max_pending": 0
+}

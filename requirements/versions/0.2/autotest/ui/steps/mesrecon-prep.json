@@ -1,0 +1,21 @@
+{
+  "name": "mesrecon-prep",
+  "comment": "Unlock MaintAccess via the record-page gate (that dialog's password box is drivable), then open the MES reconciliation tab, which shares the same gate. Ends by confirming the page is really there.",
+  "vars": {
+    "maintPassword": "S0020310"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1800 },
+    { "action": "screenshot", "out": "01-record-page.png" },
+
+    { "action": "click", "target": { "automationId": "RbMesRecon" } },
+    { "action": "sleep", "ms": 4000 },
+    { "action": "screenshot", "out": "02-mesrecon.png" },
+    { "action": "assertexists", "target": { "automationId": "ManualLotBox" } },
+    { "action": "dump", "out": "tree-mesrecon-ready.json", "max": 400 }
+  ]
+}

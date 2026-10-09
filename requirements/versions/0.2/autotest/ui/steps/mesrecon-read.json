@@ -1,0 +1,19 @@
+{
+  "name": "mesrecon-read",
+  "comment": "Site, READ-ONLY. Opens the MES reconciliation page. Opening it runs ComputeDrift(), which issues a real Oracle SELECT (mes.wire.list_by_disco_eqp_no) against the live MES. It must never click the repair / manual-set / manual-clear buttons.",
+  "vars": {
+    "maintPassword": "S0020310"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbMesRecon" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "00-before-gate.png" },
+
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 8000 },
+
+    { "action": "screenshot", "out": "01-mesrecon.png" },
+    { "action": "dump", "out": "tree-mesrecon.json", "max": 400 }
+  ]
+}

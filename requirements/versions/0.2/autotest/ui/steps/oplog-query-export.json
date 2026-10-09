@@ -1,0 +1,261 @@
+{
+  "name": "oplog-query-export",
+  "comment": "存取记录页：单条件筛选、组合筛选、重置、按批号追溯、导出（只到弹窗为止，按 ESC 关闭，不落盘）。只读——唯一副作用是「查看/导出留痕」记录，属预期。",
+  "vars": {
+    "lot": "14Z1888-0888",
+    "dateFrom": "2026-09-28 00:00:00",
+    "dateTo": "2026-09-28 23:59:59",
+    "exportPath": "C:\\Users\\86796\\AppData\\Local\\Temp\\autotest-probe\\export\\oplog-test.xlsx"
+  },
+  "steps": [
+    {
+      "action": "click",
+      "target": {
+        "automationId": "RbOpLog"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 400
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "PasswordBox",
+        "scope": "foreground"
+      },
+      "value": "{{maintPassword}}",
+      "timeoutMs": 2500,
+      "optional": true
+    },
+    {
+      "action": "key",
+      "value": "{ENTER}",
+      "optional": true
+    },
+    {
+      "action": "sleep",
+      "ms": 1200
+    },
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "RecordList"
+      }
+    },
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "ExportBtn"
+      }
+    },
+    {
+      "action": "screenshot",
+      "out": "01-oplog.png"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "LotNoBox"
+      },
+      "value": "{{lot}}"
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "SearchBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 1500
+    },
+    {
+      "action": "screenshot",
+      "out": "02-filter-by-lot.png"
+    },
+    {
+      "action": "asserttext",
+      "target": {
+        "automationId": "SummaryText"
+      },
+      "value": "第|无匹配",
+      "mode": "regex"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "TsFromBox"
+      },
+      "value": "{{dateFrom}}"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "TsToBox"
+      },
+      "value": "{{dateTo}}"
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "SearchBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 1500
+    },
+    {
+      "action": "screenshot",
+      "out": "03-filter-combined.png"
+    },
+    {
+      "action": "asserttext",
+      "target": {
+        "automationId": "SummaryText"
+      },
+      "value": "第|无匹配",
+      "mode": "regex"
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "ResetBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 1200
+    },
+    {
+      "action": "screenshot",
+      "out": "04-reset.png"
+    },
+    {
+      "action": "asserttext",
+      "target": {
+        "automationId": "SummaryText"
+      },
+      "value": "第\\s*1\\s*页",
+      "mode": "regex"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "LotNoBox"
+      },
+      "value": "{{lot}}"
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "TraceBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 2000
+    },
+    {
+      "action": "screenshot",
+      "out": "05-trace.png"
+    },
+    {
+      "action": "dump",
+      "out": "tree-trace.json",
+      "max": 200
+    },
+    {
+      "action": "assertexists",
+      "target": {
+        "automationId": "BackToListBtn"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "BackToListBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 1200
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "ResetBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 1200
+    },
+    {
+      "action": "click",
+      "target": {
+        "automationId": "ExportBtn"
+      }
+    },
+    {
+      "action": "sleep",
+      "ms": 2000
+    },
+    {
+      "action": "screenshot",
+      "out": "06-export-dialog.png",
+      "window": "foreground"
+    },
+    {
+      "action": "dump",
+      "out": "tree-export-dialog.json",
+      "max": 120,
+      "scope": "foreground"
+    },
+    {
+      "action": "settext",
+      "target": {
+        "automationId": "1001",
+        "scope": "foreground"
+      },
+      "value": "{{exportPath}}",
+      "timeoutMs": 6000,
+      "useClipboard": true
+    },
+    {
+      "action": "screenshot",
+      "out": "06b-filename-typed.png",
+      "window": "foreground"
+    },
+    {
+      "action": "sleep",
+      "ms": 400
+    },
+    {
+      "action": "key",
+      "value": "{ENTER}"
+    },
+    {
+      "action": "sleep",
+      "ms": 4000
+    },
+    {
+      "action": "screenshot",
+      "out": "07-after-export.png"
+    },
+    {
+      "action": "asserttext",
+      "target": {
+        "automationId": "StatusText"
+      },
+      "value": "已导出",
+      "mode": "contains"
+    },
+    {
+      "action": "dump",
+      "out": "tree-final.json",
+      "max": 200
+    }
+  ]
+}

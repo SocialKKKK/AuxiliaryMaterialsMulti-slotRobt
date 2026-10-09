@@ -1,0 +1,21 @@
+{
+    "ok":  false,
+    "error":  "step 2 (assertexists) failed",
+    "process":  "WireCabinet.Hmi",
+    "startedAt":  "2026-10-09T14:17:57",
+    "endedAt":  "2026-10-09T14:18:01",
+    "steps":  [
+                  {
+                      "i":  1,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "00-records.png 1024x728"
+                  },
+                  {
+                      "i":  2,
+                      "action":  "assertexists",
+                      "ok":  false,
+                      "detail":  "expected to find: id=RecordList"
+                  }
+              ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "site-oplog-real",
+  "comment": "Site, REAL DATA. Uses the record page against tonight's actual records: filter by a lot that was stored AND issued tonight (MC2680RM-05-0107), run the by-lot trace, then export to a site path and prove the file landed. Opening the page writes the expected view_operation_log record; exporting writes export_operation_log. No business state is touched.",
+  "vars": {
+    "maintPassword": "S0020310",
+    "lot": "MC2680RM-05-0107",
+    "exportPath": "C:\\autotest\\runs\\20260929-export\\oplog-real.xlsx"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 4000, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 2000 },
+
+    { "action": "assertexists", "target": { "automationId": "RecordList" } },
+    { "action": "assertexists", "target": { "automationId": "ExportBtn" } },
+    { "action": "screenshot", "out": "01-oplog-list.png" },
+
+    { "action": "settext", "target": { "automationId": "LotNoBox" }, "value": "{{lot}}" },
+    { "action": "click", "target": { "automationId": "SearchBtn" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "02-filtered-by-lot.png" },
+    { "action": "asserttext", "target": { "automationId": "SummaryText" }, "value": ".", "mode": "regex" },
+
+    { "action": "click", "target": { "automationId": "TraceBtn" } },
+    { "action": "sleep", "ms": 1500 },
+    { "action": "screenshot", "out": "03-trace-by-lot.png" },
+    { "action": "dump", "out": "tree-trace.json", "max": 300 },
+    { "action": "assertexists", "target": { "automationId": "BackToListBtn" } },
+    { "action": "click", "target": { "automationId": "BackToListBtn" } },
+    { "action": "sleep", "ms": 1000 },
+
+    { "action": "click", "target": { "automationId": "ResetBtn" } },
+    { "action": "sleep", "ms": 1000 },
+    { "action": "click", "target": { "automationId": "ExportBtn" } },
+    { "action": "sleep", "ms": 2500 },
+    { "action": "screenshot", "out": "04-save-dialog.png" },
+    { "action": "settext", "target": { "automationId": "1001", "scope": "foreground" }, "value": "{{exportPath}}", "useClipboard": true, "timeoutMs": 4000 },
+    { "action": "sleep", "ms": 500 },
+    { "action": "key", "value": "{ENTER}" },
+    { "action": "sleep", "ms": 2500 },
+    { "action": "screenshot", "out": "05-after-export.png" },
+    { "action": "asserttext", "target": { "automationId": "StatusText" }, "value": "已导出", "mode": "contains" },
+    { "action": "dump", "out": "tree-after-export.json", "max": 300 }
+  ]
+}

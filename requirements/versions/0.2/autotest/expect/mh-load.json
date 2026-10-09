@@ -1,0 +1,23 @@
+{
+  "_comment": [
+    "MH 存料（现场用）。跑法：先 snapshot 记下 ts_max_utc，做一次存料，把 app.db 取回来再 verify。",
+    "前提：批号必须是 MES 里『可用』且**不在柜内**的；已在柜内会被业务规则直接拦下（本机 mock 的两个可用批号都已在柜内，所以成功路径只能在现场验）。",
+    "口径优化 2026-10-09：一次存料 = 1 条（mh_load_available_wire），开门/关门是这条上的 door_open_ts / door_close_ts，",
+    "不再有独立的 door_open / door_close 事件；require_paired_doors 现在断言的是门时刻自洽（有开门、关门不早于开门）。"
+  ],
+  "since_utc": "REPLACE_WITH_TS_BEFORE_THE_ACTION",
+  "counts": {
+    "mh_load_available_wire": 1
+  },
+  "min_counts": {},
+  "forbid_action_types": [
+    "door_open",
+    "door_close"
+  ],
+  "failures_need_error_info": [
+    "mh_load_available_wire"
+  ],
+  "require_paired_doors": true,
+  "require_utc_storage": true,
+  "max_pending": 0
+}

@@ -1,0 +1,36 @@
+{
+  "name": "door-open",
+  "comment": "开门相关（§3 矩阵第 5/6/7 项）：MH 打开所有可用焊丝格口 + 维护页打开前柜。**真实开门**，现场执行前需人工放行并清场；本机 mock 下 IO 不可达，用于验证自动化机制。",
+  "vars": {
+    "operatorId": "1001"
+  },
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbMh" } },
+    { "action": "sleep", "ms": 400 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{mhPassword}}", "timeoutMs": 2500, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1200 },
+
+    { "action": "settext", "target": { "automationId": "OperatorIdBox" }, "value": "{{operatorId}}" },
+    { "action": "screenshot", "out": "01-before-open.png" },
+    { "action": "click", "target": { "automationId": "BtnOpenAvailable" } },
+    { "action": "sleep", "ms": 8000 },
+    { "action": "screenshot", "out": "02-after-open-available.png" },
+    { "action": "click", "target": { "name": "确认", "controlType": "Button", "scope": "foreground" }, "timeoutMs": 1500, "optional": true },
+    { "action": "sleep", "ms": 800 },
+    { "action": "dump", "out": "tree-mh-after.json", "max": 200 },
+
+    { "action": "click", "target": { "automationId": "RbMaint" } },
+    { "action": "sleep", "ms": 400 },
+    { "action": "settext", "target": { "automationId": "PasswordBox", "scope": "foreground" }, "value": "{{maintPassword}}", "timeoutMs": 2500, "optional": true },
+    { "action": "key", "value": "{ENTER}", "optional": true },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "assertexists", "target": { "automationId": "BtnOpenFrontMaint" } },
+    { "action": "click", "target": { "automationId": "BtnOpenFrontMaint" } },
+    { "action": "sleep", "ms": 8000 },
+    { "action": "screenshot", "out": "03-after-maint-open.png" },
+    { "action": "click", "target": { "name": "确认", "controlType": "Button", "scope": "foreground" }, "timeoutMs": 1500, "optional": true },
+    { "action": "sleep", "ms": 800 },
+    { "action": "screenshot", "out": "04-final.png" }
+  ]
+}

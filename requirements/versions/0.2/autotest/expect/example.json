@@ -1,0 +1,28 @@
+{
+  "_comment": [
+    "Expectation template for dbcheck.py verify. Copy it next to the run that produced the data",
+    "and fill in real values. All timestamps are UTC (the same text the DB stores).",
+    "Typical flow for one acceptance step:",
+    "  1. capture a bound:  python dbcheck.py snapshot <db>   -> note ts_max_utc (or use now-UTC)",
+    "  2. drive the UI / perform the physical action",
+    "  3. copy app.db off the cabinet (app.db + -wal + -shm while it is running)",
+    "  4. python dbcheck.py verify <copied db> --expect this-file.json",
+    "Rule of thumb (口径优化 2026-10-09): one human action = one record; door open/close and",
+    "clearing are FIELDS on that record. Standalone door events only when no business record results."
+  ],
+  "since_utc": "2026-09-28 04:40:00",
+  "counts": {
+    "view_operation_log": 1
+  },
+  "min_counts": {},
+  "forbid_action_types": [],
+  "failures_need_error_info": [
+    "mh_load_available_wire",
+    "op_return_wire",
+    "op_issue_available_wire"
+  ],
+  "require_paired_doors": true,
+  "require_utc_storage": true,
+  "utc_drift_tolerance_seconds": 900,
+  "max_pending": 0
+}

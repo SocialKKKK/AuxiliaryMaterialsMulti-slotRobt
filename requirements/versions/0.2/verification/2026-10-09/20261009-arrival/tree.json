@@ -1,0 +1,952 @@
+[
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "焊丝发放系统"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "DEMO"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOp",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMh",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMaint",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMesRecon",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbAgv",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOpLog",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "时间范围"
+    },
+    {
+        "type":  "Edit",
+        "id":  "TsFromBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "至"
+    },
+    {
+        "type":  "Edit",
+        "id":  "TsToBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "物料批号"
+    },
+    {
+        "type":  "Edit",
+        "id":  "LotNoBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口编号"
+    },
+    {
+        "type":  "Edit",
+        "id":  "SlotNoBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "操作人"
+    },
+    {
+        "type":  "Edit",
+        "id":  "OperatorBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "机台号"
+    },
+    {
+        "type":  "Edit",
+        "id":  "EqpNoBox",
+        "name":  ""
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "动作类型"
+    },
+    {
+        "type":  "ComboBox",
+        "id":  "ActionTypeBox",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "SearchBtn",
+        "name":  "查询"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "查询"
+    },
+    {
+        "type":  "Button",
+        "id":  "ResetBtn",
+        "name":  "重置"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "重置"
+    },
+    {
+        "type":  "Text",
+        "id":  "SummaryText",
+        "name":  "第 1 页 · 每页 20 条"
+    },
+    {
+        "type":  "Button",
+        "id":  "PrevPageBtn",
+        "name":  "上一页"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "上一页"
+    },
+    {
+        "type":  "Button",
+        "id":  "NextPageBtn",
+        "name":  "下一页"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "下一页"
+    },
+    {
+        "type":  "Text",
+        "id":  "StatusText",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "PendingBtn",
+        "name":  "待补偿"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "待补偿"
+    },
+    {
+        "type":  "Button",
+        "id":  "TraceBtn",
+        "name":  "追溯全程"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "追溯全程"
+    },
+    {
+        "type":  "Button",
+        "id":  "ExportBtn",
+        "name":  "导出 Excel"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "导出 Excel"
+    },
+    {
+        "type":  "DataGrid",
+        "id":  "RecordList",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "时间"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "时间"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "动作类型"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "动作类型"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "操作人"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "操作人"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "格口"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "焊丝批号"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "焊丝批号"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "机台号"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "机台号"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "结果"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "结果"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "HeaderItem",
+        "id":  "",
+        "name":  "失败原因 / 说明"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "失败原因 / 说明"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "PART_HeaderGripper",
+        "name":  ""
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 13:42:39"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "查看存取记录"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "查看存取记录"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 12:46:18"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "AGV 控车"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "下达移动单（→ 物料间焊丝柜（MH）（站点 596））"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 12:08:16"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "AGV 控车"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "下达移动单（→ 线边焊丝柜（OP）（站点 597））"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:52:20"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "AGV 自动回充"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "下充电单（自动回充）（→ 物料多仓位充电点（order-2108390331144863744））"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:59"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-I01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-I01 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:59"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-I01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-I01 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:57"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-F01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-F01 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:57"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-F01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-F01 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:55"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-E01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-E01 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:55"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-E01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-E01 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:47"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-H01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-H01 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:47"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-G01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-G01 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:47"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-H01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-H01 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:47"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-G01"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-G01 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:35"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-F03"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-F03 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:35"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口关门"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-F03"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-F03 已确认关门"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:33"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-H03"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-H03 按账面无料清空"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:33"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-G03"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "9022176106-2071"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-G03 按账面无料清空（原批号 9022176106-2071）"
+    },
+    {
+        "type":  "DataItem",
+        "id":  "",
+        "name":  "WireCabinet.Hmi.Views.OperationLogView+OperationLogRow"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "2026-10-09 10:47:33"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "开门即清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "R-E03"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "成功"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "格口 R-E03 按账面无料清空"
+    },
+    {
+        "type":  "Text",
+        "id":  "StatusText",
+        "name":  "存取记录 | MES✓ | IO在线(4/4) | RCS✓"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "IO"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "C4"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "67"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "24"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "BE"
+    },
+    {
+        "type":  "Text",
+        "id":  "ClockText",
+        "name":  "2026-10-09 13:42:47"
+    }
+]

@@ -1,0 +1,8 @@
+{
+  "name": "dump-current",
+  "comment": "Discovery scenario: screenshot the current page and dump the HMI automation tree (control type / AutomationId / Name). Use it to learn the exact caption strings before writing assertions.",
+  "steps": [
+    { "action": "screenshot", "out": "00-current.png" },
+    { "action": "dump", "out": "tree.json", "max": 500 }
+  ]
+}

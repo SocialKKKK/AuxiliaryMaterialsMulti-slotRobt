@@ -1,0 +1,14 @@
+{
+  "name": "export-probe",
+  "comment": "Learn the native save dialog's controls (file-name box + save/cancel buttons) so export can be fully automated. Read-only apart from opening/closing the dialog.",
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "click", "target": { "automationId": "ExportBtn" } },
+    { "action": "sleep", "ms": 2000 },
+    { "action": "screenshot", "out": "dlg.png", "window": "foreground" },
+    { "action": "dump", "out": "dlg-tree.json", "max": 500, "scope": "foreground" },
+    { "action": "key", "value": "{ESC}" },
+    { "action": "sleep", "ms": 600 }
+  ]
+}

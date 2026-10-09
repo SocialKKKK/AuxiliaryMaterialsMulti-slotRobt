@@ -1,0 +1,30 @@
+{
+  "name": "dump-pages",
+  "comment": "Walk every tab and dump its automation tree + a screenshot. Used to learn the exact AutomationIds/captions before writing real scenarios. Read-only.",
+  "steps": [
+    { "action": "click", "target": { "automationId": "RbMh" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "page-mh.png" },
+    { "action": "dump", "out": "tree-mh.json", "max": 400 },
+
+    { "action": "click", "target": { "automationId": "RbOp" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "page-op.png" },
+    { "action": "dump", "out": "tree-op.json", "max": 400 },
+
+    { "action": "click", "target": { "automationId": "RbMaint" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "page-maint.png" },
+    { "action": "dump", "out": "tree-maint.json", "max": 400 },
+
+    { "action": "click", "target": { "automationId": "RbOpLog" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "page-oplog.png" },
+    { "action": "dump", "out": "tree-oplog.json", "max": 400 },
+
+    { "action": "click", "target": { "automationId": "RbAgv" } },
+    { "action": "sleep", "ms": 1200 },
+    { "action": "screenshot", "out": "page-agv.png" },
+    { "action": "dump", "out": "tree-agv.json", "max": 400 }
+  ]
+}

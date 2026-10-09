@@ -1,0 +1,57 @@
+{
+    "ok":  false,
+    "error":  "step 8 (assertexists) failed",
+    "process":  "WireCabinet.Hmi",
+    "startedAt":  "2026-10-09T14:09:37",
+    "endedAt":  "2026-10-09T14:11:42",
+    "steps":  [
+                  {
+                      "i":  1,
+                      "action":  "click",
+                      "ok":  true,
+                      "detail":  "id=RbOpLog via point"
+                  },
+                  {
+                      "i":  2,
+                      "action":  "sleep",
+                      "ok":  true,
+                      "detail":  "slept 900ms"
+                  },
+                  {
+                      "i":  3,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "01-after-tab-click.png 1024x728"
+                  },
+                  {
+                      "i":  4,
+                      "action":  "settext",
+                      "ok":  false,
+                      "detail":  "(optional, ignored) element not found: id=PasswordBox"
+                  },
+                  {
+                      "i":  5,
+                      "action":  "key",
+                      "ok":  true,
+                      "detail":  "{ENTER}"
+                  },
+                  {
+                      "i":  6,
+                      "action":  "sleep",
+                      "ok":  true,
+                      "detail":  "slept 1500ms"
+                  },
+                  {
+                      "i":  7,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "02-oplog-unlocked.png 1024x728"
+                  },
+                  {
+                      "i":  8,
+                      "action":  "assertexists",
+                      "ok":  false,
+                      "detail":  "expected to find: id=RecordList"
+                  }
+              ]
+}

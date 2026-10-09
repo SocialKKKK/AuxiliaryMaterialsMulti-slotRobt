@@ -264,6 +264,7 @@ def cmd_pairs(conn: sqlite3.Connection, tz: timezone, args) -> int:
     # 无指令开门的异常配对（仍独立成条，见草案 §3.4）
     open_where, open_params = scoped(
         "is_uncommanded = 1 AND action_type IN ('uncommanded_open', 'door_open', 'mh_open_slot')"
+    )
     uncommanded_opens = conn.execute(
         f"SELECT slot_no, ts FROM app_operation_log WHERE {open_where} ORDER BY ts",
         open_params,

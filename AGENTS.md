@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test WireCabinet.sln                         # 期望 256 全通过（238 Core + 18 Windows HMI）
+dotnet test WireCabinet.sln                         # 期望 264 全通过（246 Core + 18 Windows HMI）
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -31,7 +31,7 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 
 ## 硬性约定（改动前必读）
 
-1. **记录表只增不删**：`app_operation_log` 不得出现 `UPDATE` / `DELETE`。有用例扫描全部 catalog 与源码强制。
+1. **业务事实不可改写**：`app_operation_log` 禁止 `DELETE`；仅允许补 NULL 门时刻、更新派生字段 `detail`，由 catalog 白名单与触发器约束（2026-10-09 需求方确认）。
 2. **不修改 0.1 的流程定义**（0.2 需求 §1.3）；已有一处例外见 `变更说明.md` §3。
 3. **记录写入不得影响业务**：写入失败只告警 + 转待补偿，绝不改流程 outcome（§1.4）。
 4. **记录时间存 UTC、显示与筛选按本地时区**（`OperationLogTime`，两个方向都要转）。
@@ -61,7 +61,7 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
   原先「只能现场验」的几项（操作员存废取新、存料成功路径、真实控车）**已于 2026-09-29 现场实跑**。现场结果与避坑表见 `autotest/README.md` §8。注意柜体机上**没有 python、也没有 git，只有 .NET 8 运行时** —— `dbcheck.py` 要拉回本机跑，构建也只能在本机做再推包。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
-- **2026-10-09 记录口径优化已本地实施**（未部署）：构建 0 警告、257/257 通过。改动含 schema（+3 列 + 只增不删触发器）、FlowEngine、SlotDoorActionLog、MhDoorOnlyService、AgvActionLog、记录页/导出、`autotest/dbcheck.py pairs` 与 expect 断言、四份文档。
+- **2026-10-09 记录口径优化已本地实施**（未部署）：最新 `db438eb` Release 构建 0 警告/0 错误、264/264 通过（246 Core + 18 HMI）；schema 新增 `detail`/`corrects_id` 两列与事实保护触发器。部署前复查仍发现同秒回填串记录、队列回填失败误报成功、回填 SQL 失败无补偿、MH 中断无存取记录表留痕（已有独立中断快照提醒），见 `requirements/versions/0.2/verification/2026-10-09/部署前复查.md`。
   同日按需求方复核**再收敛**：动作类型收成 2×2（MH 存/取、OP 归还/领用）+ 维护试开 + 无指令开门，规则只有「取出一个一定记一条、存放一个一定记一条」；**批量开门改回逐格**（打开 53 格 = 53 条，推翻草案的「1 条 + 清单」）；导出列收成 **16 列**（删掉作业站点——填充率 0/9624，条款一并删；并补回之前两版都漏掉的「说明」列）。
   **部署时除了 DLL 还要同步 `requirements/data-access-sql/sql-catalog/items/`**（新增 2 个写条目；应用按 `CabinetPaths` 从 exe 向上找仓库根再读 catalog，缺了会报「缺少 SQL 条目」并静默降级）。库不用手工动（启动自动补列建触发器）。回滚只换 DLL 就够。已在**现场库副本**上预演：9624 条真数据无损、触发器生效、记录页正常。**现场复核要点与断言命令见 `requirements/versions/0.2/autotest/README.md` §0.1**（`dbcheck.py pairs` 必须带 `--since`，否则会把口径优化前 854 条历史「无来源关门」报成不一致）。
 - 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对；10 月 9 日已同步部署产品及正式/mock catalog，故障组合仍待现场复核；见 requirements/versions/0.2/代码审查-20261008.md。
@@ -74,9 +74,9 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 | 查看/导出留痕无操作人 | 已知限制：记录页门禁只有密码、无工号（§2） |
 | **MH 存料的记录也没有操作人** | 未决（2026-09-29 现场发现）：MH 流程无操作人节点、§1.3 不许改流程，只能靠界面那个**可选**工号框；现场没填就留空（OP 流程则正常记到「谭磊/11044242」）。建议改成存料前必填，否则追溯链缺「谁」这一维 |
 | **「无指令开门」误报（根因已查明，本地已修）** | 2026-10-09 现场复现 + 定位：门态巡检把「库已记 open、但开锁脉冲尚未生效」的窗口当成"已关门"，回写库并补一条无来源关门记录，下一秒 DI 真释锁 → 反向判成计划外开门；一次标准 OP 存废取新每个格口各误报一次。已本地修两处：`DoorStateReconciler` 必须**真正读到过释锁**才判已关（另留 3 轮兜底），`MhDoorOnlyService` 不再补无来源关门（消除同一开门的重复关门）。**现场待部署**，推完开一格再关即可验证 `is_uncommanded` 不再出现 |
-| **记录口径优化（**已本地实施，现场待部署**）** | 2026-10-09 现场量化：当天 481 条里 **84% 是过程/推导记录**，平均 1 次人的动作 ≈ 12 条。已按需求方确认落地全量：一次人的动作一条 + 门/清空挂字段；**领用与取出合并**（决议 1 变更，验收清单原「合并=未通过」已删）；批量开门 1 条 + 格口清单；自动路径连续失败合并；「只增不删」收窄为「业务事实不可改写」（仅放行补 NULL 门时刻、更新 `detail`，库层触发器兜底）。条数：存料 3→1、批量开门 159→1、OP 存废取新 7→2、自动返航 9 次→1 条。新增 3 列 `detail`/`slot_count`/`corrects_id` + 2 个写 catalog 条目。**改动面很大（FlowEngine 门事件抑制与回填、SlotDoorActionLog 与 MhDoorOnlyService 重写、AgvActionLog 合并）**，详见 `requirements/versions/0.2/记录口径优化-20261009.md` §0（含四处有意偏差）与 `变更说明.md` §2.7/§5.7 |
+| **记录口径优化（已本地实施，现场待部署）** | 最终口径为 MH 存/取、OP 归还/领用：存料 3→1、批量开门 159→53（逐格一条）、OP 存废取新 7→2、自动返航连续失败 9→1；导出 16 列。批号/格口查询及批量中途关门已复验，部署前仍需处理上述复查问题 |
 | **订单门与 RCS 订单状态可能不同步** | 10 月 8 日已修，10 月 9 日已部署：兼容 `done_time`，取消后等 RCS 释放，详情失败显示原因且保留联锁；不因车辆订单为空强清队列。实际取消/释放仍待现场复核 |
-| **充电态无法手动离站/自动返航** | 10 月 9 日已部署，CHARGING 发车按钮可用；14:31 满电自动返航报“目的地站点不存在”，旧配置物料间 596 已不在 RCS 地图 22。正确物料间目标/移动放行待用户确认；实际成功离站与返航未验收，阈值仍 30%/90%，见 `verification/2026-10-09/部署复核.md` |
+| **充电态无法手动离站/自动返航** | 10 月 9 日已部署，CHARGING 发车按钮可用；旧物料间 596 已不在地图 22，本地配置已按现场确认改为 522（`f7cbf3e`）。未取得 522 配置的部署收据与成功返航证据；实际离站/返航待验，阈值仍 30%/90% |
 | 导出 Excel 的落盘 | 2026-09-29 现场已验证：`oplog-real.xlsx` 9040 B 落盘 + `export_operation_log` 留痕。**只剩人工用 Excel 打开确认一次** |
 | 归档/备份的周期与存放 | 做法已定，参数待现场填实（`运维说明-归档与备份.md`） |
 | 两套 FlowEngine | 产品一份、`validation/wire-flow-lab` 一份 fork（已漂移），长期需收拢 |

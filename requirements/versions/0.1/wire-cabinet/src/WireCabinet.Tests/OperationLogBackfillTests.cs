@@ -134,6 +134,51 @@ public class OperationLogBackfillTests : IDisposable
         Assert.Equal("2026-10-09 08:51:22.000", Assert.Single(Rows(db))["door_close_ts"]);
     }
 
+    /// <summary>
+    /// 记录还没落库（写入失败、在待补偿队列里）时回填门时刻：不能只是失败，
+    /// 要把门时刻**补进队列里那条**，等重试落库时它就是完整的 ——
+    /// 否则那条记录的门时刻会永久为空（归还/领用是先提交、后开关门的）。
+    /// </summary>
+    [Fact]
+    public void BackfillDoorTs_WhenRecordStillQueued_PatchesTheQueuedEntry()
+    {
+        var (db, sink) = NewSink();
+        const string submitted = "2026-10-09 08:51:19.000";
+
+        // 用一个临时触发器挡住 INSERT：写入失败 → 转待补偿；但表还在，UPDATE 会正常执行、只是命中 0 行。
+        Exec(db, """
+            CREATE TRIGGER tmp_block_insert BEFORE INSERT ON app_operation_log
+            BEGIN SELECT RAISE(ABORT, 'boom'); END;
+            """);
+        var write = sink.TryWrite(new OperationLogEntry
+        {
+            Ts = submitted,
+            ActionType = OperationLogActionTypes.OpReturnWire,
+            SlotNo = "R-I03",
+            Result = "成功",
+        });
+        Assert.False(write.Success);
+        Assert.True(write.Queued);
+        Assert.Empty(Rows(db));
+
+        // 关门后回填：记录不在表里 → 应改为补进队列，而不是失败
+        var result = sink.BackfillDoorTs(
+            OperationLogActionTypes.OpReturnWire, submitted, "2026-10-09 08:51:12.000", "2026-10-09 08:51:19.000");
+        Assert.True(result.Success, result.Error);
+
+        var pending = sink.ListPending();
+        var row0 = Assert.Single(pending);
+        Assert.Equal("2026-10-09 08:51:19.000", row0.Entry.DoorCloseTs);   // 门时刻已经挂到队列里那条上
+
+        // 放开写入，走一次补偿 —— 补写出来的记录必须带门时刻
+        Exec(db, "DROP TRIGGER tmp_block_insert;");
+        Assert.True(sink.RetryPendingRow(row0.Id).Success);
+
+        var row = Assert.Single(Rows(db));
+        Assert.Equal("2026-10-09 08:51:12.000", row["door_open_ts"]);
+        Assert.Equal("2026-10-09 08:51:19.000", row["door_close_ts"]);
+    }
+
     [Fact]
     public void Insert_WritesDetailAndCorrectsId()
     {

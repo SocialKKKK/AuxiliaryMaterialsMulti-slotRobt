@@ -154,6 +154,43 @@ public sealed class OperationLogPendingStore
         return rows;
     }
 
+    /// <summary>
+    /// 把后到的门时刻补进**还没落库**的那条待补偿（口径优化 §4 A 档的补偿路径）。
+    ///
+    /// 归还 / 领用的门时刻是关门后才有的，而业务记录在开门前就写了；若那次写入失败、
+    /// 记录还在队列里，按 (action_type, ts) 回填就找不到行 —— 等重试落库时那条记录的门时刻
+    /// 会永久为空。这里直接把门时刻写进队列里那条 entry_json，重试落库时它就是完整的。
+    /// </summary>
+    /// <returns>真的补进了一条才返回 true（没有匹配的待补偿行返回 false）。</returns>
+    public bool TryPatchDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs)
+    {
+        if (string.IsNullOrWhiteSpace(actionType) || string.IsNullOrWhiteSpace(ts)) return false;
+
+        foreach (var row in ListActive())
+        {
+            var entry = row.Entry;
+            if (!string.Equals(entry.ActionType, actionType, StringComparison.Ordinal)) continue;
+            if (!string.Equals(entry.Ts, ts, StringComparison.Ordinal)) continue;
+            if (!string.IsNullOrWhiteSpace(entry.DoorCloseTs)) continue;   // 已经补过
+
+            var patched = entry with { DoorOpenTs = doorOpenTs ?? entry.DoorOpenTs, DoorCloseTs = doorCloseTs };
+            Write(
+                """
+                UPDATE operation_log_pending
+                SET entry_json = :entry_json
+                WHERE id = :id AND status IN ('pending', 'failed');
+                """,
+                new Dictionary<string, object?>
+                {
+                    ["entry_json"] = JsonSerializer.Serialize(patched),
+                    ["id"] = row.Id,
+                });
+            return true;
+        }
+
+        return false;
+    }
+
     private void Write(string sql, Dictionary<string, object?> parameters) =>
         _appDb.RunRaw(sql, parameters, isWrite: true);
 

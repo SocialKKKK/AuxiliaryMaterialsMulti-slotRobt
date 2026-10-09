@@ -122,6 +122,8 @@ public sealed class FlowEngine
         }
         ctx.NodeResults[node.Id] = row;
 
+        var findings = new List<Finding>();
+
         // 关门确认：§3.3 把 door_close_ts 定义为「关门确认时刻」。操作员流程的关门是用户确认
         // （closeReturnSlotDoor / closeIssueSlotDoor 是 user_input，不是 slot_close 节点），
         // 所以按节点声明的 closed 输出识别，而不是靠节点名。
@@ -129,10 +131,11 @@ public sealed class FlowEngine
         {
             var closedAt = NowUtcText();
             ctx.Runtime[DoorCloseTsKey] = closedAt;
-            BackfillBusinessDoorTs(node, closedAt);
+            BackfillBusinessDoorTs(node, closedAt, findings);
         }
 
-        var (next, findings) = Route(node, "success");
+        var (next, routed) = Route(node, "success");
+        findings.AddRange(routed);
         return Build(node, "success", next, "用户输入", sb.ToString(), findings);
     }
 
@@ -652,10 +655,12 @@ public sealed class FlowEngine
     /// 关门确认后，把这一对门时刻补进该半程已经写好的业务记录（口径优化 §5 路线②）。
     ///
     /// 归还 / 领用是在开门之前提交并写记录的，写记录时关门时刻还不存在，只能事后补。
-    /// 回填只补 NULL、绝不改写已有值（库层触发器兜底）；失败只告警，
-    /// **绝不改变业务 outcome 或路由**（§1.4）。
+    /// 回填只补 NULL、绝不改写已有值（库层触发器兜底）；**绝不改变业务 outcome 或路由**（§1.4）。
+    ///
+    /// 失败要**在界面上看得见**（不只是 Trace）：门时刻为空会被当成"这次操作没完成"，
+    /// 看着像功能坏了。记录还在待补偿队列时由 sink 直接把门时刻补进队列，不算失败。
     /// </summary>
-    private void BackfillBusinessDoorTs(FlowNode node, string closedAt)
+    private void BackfillBusinessDoorTs(FlowNode node, string closedAt, List<Finding> findings)
     {
         if (_svc.OperationLog is not { } sink) return;
         if (!OpBackfillKeyByNodeId.TryGetValue(node.Id, out var key)) return;
@@ -666,7 +671,10 @@ public sealed class FlowEngine
 
         var result = sink.BackfillDoorTs(actionType, recordTs, RuntimeValue(DoorOpenTsKey), closedAt);
         if (!result.Success)
+        {
             System.Diagnostics.Trace.TraceWarning($"补齐 {actionType} 门时刻失败：{result.Error}");
+            findings.Add(Warn(node, "存取记录", $"补齐门时刻失败（门时刻会留空，请在记录页核对）：{result.Error}"));
+        }
     }
 
     /// <summary>

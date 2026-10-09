@@ -227,10 +227,17 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
             if (result.HasError)
                 return OperationLogWriteResult.Fail(result.Error!);
 
-            // 必须恰好 1 行：0 行说明记录还没落库（还在待补偿队列）或已经补过；
-            // 多于 1 行说明定位键不够唯一。两种都不能算补写成功。
-            if (result.RowsAffected != 1)
+            // 多于 1 行说明定位键不够唯一（同种动作同秒两条），不能当作补写成功。
+            if (result.RowsAffected > 1)
                 return OperationLogWriteResult.Fail($"补齐门时刻命中 {result.RowsAffected} 行（应恰好 1 行）。");
+
+            // 0 行：这条记录还没落库（写入失败、还在待补偿队列里）或已经补过。
+            // 前者能救 —— 把门时刻直接补进队列里那条，重试落库时它就是完整的；
+            // 否则那条记录的门时刻会永久为空（归还 / 领用是先提交、后开关门的）。
+            if (result.RowsAffected == 0)
+                return _pending.TryPatchDoorTs(actionType, ts, doorOpenTs, doorCloseTs)
+                    ? OperationLogWriteResult.Ok()
+                    : OperationLogWriteResult.Fail("补齐门时刻命中 0 行（记录未落库且不在待补偿队列，或已补过）。");
 
             return OperationLogWriteResult.Ok();
         }

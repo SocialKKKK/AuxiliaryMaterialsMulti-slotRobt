@@ -17,7 +17,10 @@ get a consistent snapshot while the app is writing.
 Commands
     snapshot <db>                       counts per action type, time range, queue state
     verify   <db> --expect file.json    run assertions, exit 1 when any fails
+    counts   <db> [--since <utc>]       per-action-type counts in a window (口径核对：一次动作 = 1 条)
     tail     <db> [-n 20]               last N rows (local time), for eyeballing
+    pairs    <db> [--since <utc>]       door-timestamp self-consistency + uncommanded pairing
+    columns  <db>                       which app_operation_log columns exist
     pairs    <db>                       door open/close pairing report
 
 Exit codes: 0 ok, 1 verification failed, 2 usage/data error.
@@ -31,6 +34,7 @@ import os
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # Mirrors WireCabinet.Data.OperationLogActionTypes (codes only; labels are UI concerns).
 ACTION_LABELS = {
@@ -57,7 +61,11 @@ def connect(path: str) -> sqlite3.Connection:
     if not os.path.exists(path):
         fail(f"database not found: {path}")
     # mode=ro keeps this tool from ever writing to a production database.
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    #
+    # 路径必须用 as_uri() 转义再拼查询串：本仓库就在 "...\C#\..." 下，直接拼
+    # f"file:{path}?mode=ro" 会把 '#' 之后当成 URI fragment，SQLite 实际打开的是另一个
+    # 文件（表现为 "no such table: app_operation_log"）。as_uri() 会把 # 编成 %23。
+    conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -144,6 +152,57 @@ def cmd_tail(conn: sqlite3.Connection, tz: timezone, args) -> int:
         row["door_close_local"] = to_local(row["door_close_utc"], tz)
         out.append(row)
     print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_counts(conn: sqlite3.Connection, tz: timezone, args) -> int:
+    """按动作类型数条数——现场核对口径优化用，省得在界面上眯着眼数。
+
+    用法：动作前 `snapshot` 记下 `ts_max_utc`，动作后
+
+        python dbcheck.py counts <app.db> --since "<那个时刻>"
+
+    口径优化后一次「人的操作」应恰好 **1 条**：存料 1、批量开门 1（带 slot_count）、
+    一轮存废取新 2（归还 + 领用并取出）、自动返航连续失败 1（detail.count 记次数）。
+    """
+    since = getattr(args, "since", None)
+    where = "WHERE ts >= ?" if since else ""
+    params: tuple = (since,) if since else ()
+
+    rows = conn.execute(
+        f"""
+        SELECT action_type, COUNT(*) AS n, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+        FROM app_operation_log {where}
+        GROUP BY action_type ORDER BY n DESC, action_type
+        """,
+        params,
+    ).fetchall()
+
+    by_action = []
+    for r in rows:
+        code = r["action_type"] or ""
+        by_action.append(
+            {
+                "action_type": code,
+                "label": ACTION_LABELS.get(code, code),
+                "count": r["n"],
+                "first_local": to_local(r["first_ts"], tz),
+                "last_local": to_local(r["last_ts"], tz),
+            }
+        )
+
+    print(json.dumps(
+        {
+            "since_utc": since,
+            "total": sum(r["n"] for r in rows),
+            "counts": {r["action_type"] or "": r["n"] for r in rows},
+            "by_action": by_action,
+            "note": "口径优化后一次人的操作 = 1 条（开门/关门/清空是这条上的字段）。"
+                    "不带 --since 会把历史全算进来，看不出本次动作。",
+        },
+        ensure_ascii=False,
+        indent=2,
+    ))
     return 0
 
 
@@ -375,7 +434,7 @@ def cmd_columns(conn: sqlite3.Connection, tz, args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="assert on the cabinet app.db")
-    parser.add_argument("command", choices=["snapshot", "verify", "tail", "pairs", "columns"])
+    parser.add_argument("command", choices=["snapshot", "verify", "tail", "counts", "pairs", "columns"])
     parser.add_argument("db", help="path to app.db (copy it off the cabinet first)")
     parser.add_argument("--expect", help="expectations json (verify only)")
     parser.add_argument("-n", type=int, default=20, help="rows for tail (default 20)")
@@ -408,6 +467,8 @@ def main() -> int:
             return cmd_verify(conn, tz, args)
         if args.command == "tail":
             return cmd_tail(conn, tz, args)
+        if args.command == "counts":
+            return cmd_counts(conn, tz, args)
         if args.command == "pairs":
             return cmd_pairs(conn, tz, args)
         return cmd_columns(conn, tz, args)

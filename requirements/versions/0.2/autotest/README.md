@@ -79,9 +79,14 @@
 **断言必须带时间窗**，否则会被历史数据误伤：
 
 ```bash
+python dbcheck.py counts <app.db> --since "<动作前的 UTC 时刻>"   # 一眼看每种动作几条
 python dbcheck.py pairs  <app.db> --since "<动作前的 UTC 时刻>"
 python dbcheck.py verify <app.db> --expect expect/mh-load.json   # since_utc 已写进 expect
 ```
+
+`counts` 是现场核对口径最省事的命令：动作前 `snapshot` 记下 `ts_max_utc`，做完动作跑一次，
+输出里每种动作各几条一目了然，不用在界面上数。一次「人的操作」应当恰好 1 条
+（一轮存废取新是 2 条：归还 + 领用并取出）。
 
 `pairs` 不带 `--since` 会扫全表，把口径优化前那 **854 条「无来源关门」**（`door_close_ts` 有值、
 `door_open_ts` 为空；10-09 已修掉，最晚一条 `2026-10-09 08:51:28`）报成不一致；

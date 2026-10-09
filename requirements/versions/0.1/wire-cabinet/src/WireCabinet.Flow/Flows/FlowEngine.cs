@@ -538,6 +538,13 @@ public sealed class FlowEngine
     private const string OpReturnRecordTsKey = "op_return_record_ts";
     private const string OpIssueRecordTsKey = "op_issue_record_ts";
 
+    /// <summary>
+    /// 同上，但存的是那条记录的 rowid。回填按 rowid 定位：ts 只精确到秒，
+    /// 同一种动作在同一秒出现两条时按 ts 回填会把两条都填成同一个关门时刻。
+    /// </summary>
+    private const string OpReturnRecordIdKey = "op_return_record_id";
+    private const string OpIssueRecordIdKey = "op_issue_record_id";
+
     /// <summary>关门确认节点 → 该半程业务记录的定位键。见 BackfillBusinessDoorTs。</summary>
     private static readonly Dictionary<string, string> OpBackfillKeyByNodeId = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -578,7 +585,7 @@ public sealed class FlowEngine
         // ts 由这里生成并原样写入：关门后要按它回填门时刻，必须与落库值完全一致。
         var recordTs = NowUtcText();
 
-        WriteEntry(sink, node, findings, "操作", new OperationLogEntry
+        var write = WriteEntry(sink, node, findings, "操作", new OperationLogEntry
         {
             Ts = recordTs,
             ActionType = actionType,
@@ -613,7 +620,12 @@ public sealed class FlowEngine
 
         // 只有成功写入才可能被回填（失败时没落库，回填会命中 0 行）。
         if (success)
+        {
             Context!.Runtime[isReturn ? OpReturnRecordTsKey : OpIssueRecordTsKey] = recordTs;
+            if (write.RowId is { } id)
+                Context.Runtime[isReturn ? OpReturnRecordIdKey : OpIssueRecordIdKey] =
+                    id.ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>
@@ -669,7 +681,12 @@ public sealed class FlowEngine
         var isReturn = string.Equals(key, OpReturnRecordTsKey, StringComparison.Ordinal);
         var actionType = isReturn ? OpReturnActionType : OpIssueActionType;
 
-        var result = sink.BackfillDoorTs(actionType, recordTs, RuntimeValue(DoorOpenTsKey), closedAt);
+        var idText = RuntimeValue(isReturn ? OpReturnRecordIdKey : OpIssueRecordIdKey);
+        var rowId = long.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : (long?)null;
+
+        var result = sink.BackfillDoorTs(rowId, actionType, recordTs, RuntimeValue(DoorOpenTsKey), closedAt);
         if (!result.Success)
         {
             System.Diagnostics.Trace.TraceWarning($"补齐 {actionType} 门时刻失败：{result.Error}");
@@ -681,11 +698,12 @@ public sealed class FlowEngine
     /// 写一条记录。**契约**：写入失败只追加一条告警，绝不改变本节点的 outcome / 路由
     /// （0.2 需求范围 §1.4 第 1 条，验收 §9 C1）。
     /// </summary>
-    private void WriteEntry(IOperationLogSink sink, FlowNode node, List<Finding> findings, string what, OperationLogEntry entry)
+    private OperationLogWriteResult WriteEntry(IOperationLogSink sink, FlowNode node, List<Finding> findings, string what, OperationLogEntry entry)
     {
         var write = sink.TryWrite(entry);
         if (!write.Success)
             findings.Add(Warn(node, "存取记录", $"存取记录写入失败（不影响本次{what}{(write.Queued ? "，已转待补偿" : "")}）：{write.Error}"));
+        return write;
     }
 
     /// <summary>取某节点结果里的字段（节点未执行或字段缺失时为 null）。</summary>

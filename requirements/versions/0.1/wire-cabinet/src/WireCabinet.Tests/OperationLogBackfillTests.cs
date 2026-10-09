@@ -48,17 +48,19 @@ public class OperationLogBackfillTests : IDisposable
     {
         var (db, sink) = NewSink();
         const string submitted = "2026-10-09 08:51:19.000";
-        Assert.True(sink.TryWrite(new OperationLogEntry
+        var write = sink.TryWrite(new OperationLogEntry
         {
             Ts = submitted,
             ActionType = OperationLogActionTypes.OpReturnWire,
             SlotNo = "R-I03",
             LotNo = "MC268142-02-0111",
             Result = "成功",
-        }).Success);
+        });
+        Assert.True(write.Success);
 
         var result = sink.BackfillDoorTs(
-            OperationLogActionTypes.OpReturnWire, submitted, "2026-10-09 08:51:12.000", "2026-10-09 08:51:22.000");
+            write.RowId, OperationLogActionTypes.OpReturnWire, submitted,
+            "2026-10-09 08:51:12.000", "2026-10-09 08:51:22.000");
 
         Assert.True(result.Success, result.Error);
         var row = Assert.Single(Rows(db));
@@ -72,15 +74,15 @@ public class OperationLogBackfillTests : IDisposable
     {
         var (_, sink) = NewSink();
         const string submitted = "2026-10-09 08:51:19.000";
-        sink.TryWrite(new OperationLogEntry
+        var write = sink.TryWrite(new OperationLogEntry
         {
             Ts = submitted,
             ActionType = OperationLogActionTypes.OpReturnWire,
             Result = "成功",
         });
-        Assert.True(sink.BackfillDoorTs(OperationLogActionTypes.OpReturnWire, submitted, "08:51:12", "08:51:22").Success);
+        Assert.True(sink.BackfillDoorTs(write.RowId, OperationLogActionTypes.OpReturnWire, submitted, "08:51:12", "08:51:22").Success);
 
-        var second = sink.BackfillDoorTs(OperationLogActionTypes.OpReturnWire, submitted, "08:51:12", "08:51:23");
+        var second = sink.BackfillDoorTs(write.RowId, OperationLogActionTypes.OpReturnWire, submitted, "08:51:12", "08:51:23");
 
         Assert.False(second.Success);
     }
@@ -90,7 +92,7 @@ public class OperationLogBackfillTests : IDisposable
     {
         var (_, sink) = NewSink();
 
-        var result = sink.BackfillDoorTs(OperationLogActionTypes.OpReturnWire, "2026-10-09 09:00:00.000", "a", "b");
+        var result = sink.BackfillDoorTs(null, OperationLogActionTypes.OpReturnWire, "2026-10-09 09:00:00.000", "a", "b");
 
         Assert.False(result.Success);
     }
@@ -163,7 +165,8 @@ public class OperationLogBackfillTests : IDisposable
 
         // 关门后回填：记录不在表里 → 应改为补进队列，而不是失败
         var result = sink.BackfillDoorTs(
-            OperationLogActionTypes.OpReturnWire, submitted, "2026-10-09 08:51:12.000", "2026-10-09 08:51:19.000");
+            write.RowId, OperationLogActionTypes.OpReturnWire, submitted,
+            "2026-10-09 08:51:12.000", "2026-10-09 08:51:19.000");
         Assert.True(result.Success, result.Error);
 
         var pending = sink.ListPending();
@@ -177,6 +180,39 @@ public class OperationLogBackfillTests : IDisposable
         var row = Assert.Single(Rows(db));
         Assert.Equal("2026-10-09 08:51:12.000", row["door_open_ts"]);
         Assert.Equal("2026-10-09 08:51:19.000", row["door_close_ts"]);
+    }
+
+    /// <summary>
+    /// 待补偿补丁**更新失败时必须报失败**。早先这里调 Write 而 Write 丢弃了返回值，
+    /// UPDATE 失败也返回 true → 门时刻实际没保存，却被当成补好了。
+    /// </summary>
+    [Fact]
+    public void BackfillDoorTs_WhenQueuePatchFails_ReportsFailure()
+    {
+        var (db, sink) = NewSink();
+        const string submitted = "2026-10-09 08:51:19.000";
+
+        // 写入失败 → 转待补偿（此时没有 rowid）
+        Exec(db, """
+            CREATE TRIGGER tmp_block_insert BEFORE INSERT ON app_operation_log
+            BEGIN SELECT RAISE(ABORT, 'boom'); END;
+            """);
+        var write = sink.TryWrite(new OperationLogEntry
+        {
+            Ts = submitted,
+            ActionType = OperationLogActionTypes.OpReturnWire,
+            Result = "成功",
+        });
+        Assert.False(write.Success);
+        Assert.Null(write.RowId);
+
+        // 再把待补偿表弄坏 → 补丁更新必然失败，这时不能报成功
+        Exec(db, "ALTER TABLE operation_log_pending RENAME TO operation_log_pending_broken;");
+
+        var result = sink.BackfillDoorTs(
+            null, OperationLogActionTypes.OpReturnWire, submitted, "2026-10-09 08:51:12.000", "2026-10-09 08:51:19.000");
+
+        Assert.False(result.Success);
     }
 
     [Fact]

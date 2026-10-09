@@ -5,6 +5,17 @@ public interface IAppDb
 {
     DbResult Run(SqlCatalogItem item, IDictionary<string, object?> parameters);
     DbResult RunRaw(string sql, IDictionary<string, object?> parameters, bool isWrite);
+
+    /// <summary>
+    /// 写入一条记录并返回它的 rowid（回填按唯一主键定位用）。
+    /// 默认实现退化为 <see cref="Run"/>：拿不到 id 时回填会退回按 (action_type, ts) 定位，
+    /// 那是测试替身与未知实现的下限，真实实现（<see cref="SqliteAppDb"/>）必须给出 id。
+    /// </summary>
+    DbResult RunReturningRowId(SqlCatalogItem item, IDictionary<string, object?> parameters, out long? rowId)
+    {
+        rowId = null;
+        return Run(item, parameters);
+    }
 }
 
 public sealed class SqliteAppDb : IAppDb
@@ -17,6 +28,17 @@ public sealed class SqliteAppDb : IAppDb
         => item.Operation == SqlOperation.Write
             ? _db.Execute(item.Sql, parameters)
             : _db.Query(item.Sql, parameters);
+
+    public DbResult RunReturningRowId(SqlCatalogItem item, IDictionary<string, object?> parameters, out long? rowId) =>
+        item.Operation == SqlOperation.Write
+            ? _db.ExecuteReturningRowId(item.Sql, parameters, out rowId)
+            : RunReturningRowIdAsQuery(item, parameters, out rowId);
+
+    private DbResult RunReturningRowIdAsQuery(SqlCatalogItem item, IDictionary<string, object?> parameters, out long? rowId)
+    {
+        rowId = null;
+        return _db.Query(item.Sql, parameters);
+    }
 
     public DbResult RunRaw(string sql, IDictionary<string, object?> parameters, bool isWrite)
         => isWrite ? _db.Execute(sql, parameters) : _db.Query(sql, parameters);

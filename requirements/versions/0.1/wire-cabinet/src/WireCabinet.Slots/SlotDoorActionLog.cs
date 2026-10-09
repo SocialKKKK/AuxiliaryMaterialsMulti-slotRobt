@@ -47,10 +47,11 @@ public sealed class SlotDoorActionLog
     /// 关门回填要靠它定位那条记录，所以调用方必须原样传回同一个值。
     /// <paramref name="clearedLotNo"/> 是开门时该格账面已有的批号（空格口传 null）。
     /// </summary>
-    public bool RecordOpened(string actionType, string slotNo, DoorOperator op,
+    /// <returns>写入成功返回那条记录的 rowid（关门回填要按它定位）；失败或未启用记录时返回 null。</returns>
+    public long? RecordOpened(string actionType, string slotNo, DoorOperator op,
         string? openedAtUtc = null, string? clearedLotNo = null)
     {
-        if (_sink is null) return false;
+        if (_sink is null) return null;
 
         var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
         var cleared = string.IsNullOrWhiteSpace(clearedLotNo) ? null : clearedLotNo.Trim();
@@ -59,19 +60,23 @@ public sealed class SlotDoorActionLog
             lotNo: cleared, isCleared: cleared is not null)
             with { Ts = openTime, DoorOpenTs = openTime };
 
-        return _sink.TryWrite(entry).Success;
+        var write = _sink.TryWrite(entry);
+        return write.Success ? write.RowId : null;
     }
 
     /// <summary>
     /// 关门确认：把 <c>door_close_ts</c> 补进那次开门的那条记录（只补 NULL，口径优化 §4 A 档）。
-    /// 定位用 (actionType, openedAtUtc)——开门记录的 ts 就是它。
+    ///
+    /// <paramref name="rowId"/> 是开门时那条记录的 rowid（唯一主键）。为 null 表示那次写入
+    /// 没落库（转了待补偿），此时由 sink 把门时刻补进队列里那条；
+    /// <paramref name="openedAtUtc"/> 只用于这种兜底场景按 (actionType, ts) 在队列里找。
     /// </summary>
-    public bool RecordClosed(string actionType, string openedAtUtc, string? closedAtUtc = null)
+    public bool RecordClosed(long? rowId, string actionType, string openedAtUtc, string? closedAtUtc = null)
     {
-        if (_sink is null || string.IsNullOrWhiteSpace(openedAtUtc)) return false;
+        if (_sink is null || (rowId is null && string.IsNullOrWhiteSpace(openedAtUtc))) return false;
 
         var closeTime = closedAtUtc ?? OperationLogTime.UtcNowText();
-        return _sink.BackfillDoorTs(actionType, openedAtUtc, openedAtUtc, closeTime).Success;
+        return _sink.BackfillDoorTs(rowId, actionType, openedAtUtc, openedAtUtc, closeTime).Success;
     }
 
     /// <summary>开锁失败的格口也留一条，带原因（§ 矩阵第 9 项）。</summary>

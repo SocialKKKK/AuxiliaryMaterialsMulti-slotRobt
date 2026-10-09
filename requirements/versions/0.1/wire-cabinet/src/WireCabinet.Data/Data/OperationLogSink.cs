@@ -53,7 +53,7 @@ public sealed record OperationLogEntry
 }
 
 /// <summary>记录写入结果。失败不是异常，是返回值。</summary>
-public readonly record struct OperationLogWriteResult(bool Success, string? Error, bool Queued = false)
+public readonly record struct OperationLogWriteResult(bool Success, string? Error, bool Queued = false, long? RowId = null)
 {
     public static OperationLogWriteResult Ok() => new(true, null);
     public static OperationLogWriteResult Fail(string error, bool queued = false) => new(false, error, queued);
@@ -74,10 +74,16 @@ public interface IOperationLogSink
     ///
     /// 归还 / 领用是先提交、后开关门的，写记录时关门时刻还不存在，只能事后补。
     /// 契约与 <see cref="TryWrite"/> 一致：只补 NULL、绝不改写已有值，失败只返回失败结果，
-    /// 不抛异常、不阻断业务。定位键是 (actionType, ts)——ts 由调用方生成并原样写入，
-    /// 必须恰好命中 0 或 1 行；命中 0 行按失败返回（可能已补过，或记录还在待补偿队列里）。
+    /// 不抛异常、不阻断业务。
+    ///
+    /// 定位**按 <paramref name="rowId"/>（唯一主键）**，不是按 (actionType, ts)：ts 只精确到秒，
+    /// 而批量开门每格 400ms，**同一种动作在同一秒出现两条是常态**；按 ts 回填会把两条都填成
+    /// 同一个关门时刻，而 UPDATE 是先执行、后检查影响行数 —— 检查拦不住已经写坏的行。
+    /// <paramref name="rowId"/> 为空表示那条记录没落库（写入失败转了待补偿），
+    /// 此时把门时刻补进队列里那条，等重试落库时它是完整的。
     /// </summary>
-    OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs);
+    OperationLogWriteResult BackfillDoorTs(long? rowId, string actionType, string ts,
+        string? doorOpenTs, string? doorCloseTs);
 
     /// <summary>
     /// 更新某条**失败**记录的 <c>detail</c>（口径优化 §2 口径③）：自动路径同一原因连续失败时，
@@ -203,14 +209,19 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
     /// 只补 NULL 的门时刻，绝不改写已有值——库层 trg_app_operation_log_append_only 会兜底拒绝越界改动。
     /// 定位键 (actionType, ts) 必须恰好命中 1 行，否则按失败返回（不阻断业务）。
     /// </summary>
-    public OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs)
+    public OperationLogWriteResult BackfillDoorTs(long? rowId, string actionType, string ts,
+        string? doorOpenTs, string? doorCloseTs)
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(actionType) || string.IsNullOrWhiteSpace(ts))
-                return OperationLogWriteResult.Fail("补齐门时刻缺少定位键（action_type / ts）。");
             if (string.IsNullOrWhiteSpace(doorCloseTs))
                 return OperationLogWriteResult.Fail("补齐门时刻缺少关门时刻。");
+
+            // 记录没落库（写入失败、转了待补偿）→ 把门时刻补进队列里那条，重试落库时写完整。
+            if (rowId is not { } id)
+                return _pending.TryPatchDoorTs(actionType, ts, doorOpenTs, doorCloseTs)
+                    ? OperationLogWriteResult.Ok()
+                    : OperationLogWriteResult.Fail("补齐门时刻：记录未落库，且待补偿队列里找不到它。");
 
             var item = _catalog.Find(BackfillDoorTsSqlId);
             if (item is null)
@@ -220,24 +231,15 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
             {
                 ["door_open_ts"] = doorOpenTs,
                 ["door_close_ts"] = doorCloseTs,
-                ["action_type"] = actionType,
-                ["ts"] = ts,
+                ["id"] = id,
             });
 
             if (result.HasError)
                 return OperationLogWriteResult.Fail(result.Error!);
 
-            // 多于 1 行说明定位键不够唯一（同种动作同秒两条），不能当作补写成功。
-            if (result.RowsAffected > 1)
-                return OperationLogWriteResult.Fail($"补齐门时刻命中 {result.RowsAffected} 行（应恰好 1 行）。");
-
-            // 0 行：这条记录还没落库（写入失败、还在待补偿队列里）或已经补过。
-            // 前者能救 —— 把门时刻直接补进队列里那条，重试落库时它就是完整的；
-            // 否则那条记录的门时刻会永久为空（归还 / 领用是先提交、后开关门的）。
+            // 按主键定位，最多命中一行；0 行 = 已补过（或那行不在了），按失败返回但不影响业务。
             if (result.RowsAffected == 0)
-                return _pending.TryPatchDoorTs(actionType, ts, doorOpenTs, doorCloseTs)
-                    ? OperationLogWriteResult.Ok()
-                    : OperationLogWriteResult.Fail("补齐门时刻命中 0 行（记录未落库且不在待补偿队列，或已补过）。");
+                return OperationLogWriteResult.Fail($"补齐门时刻：id={id} 未命中（已补过或记录不存在）。");
 
             return OperationLogWriteResult.Ok();
         }
@@ -313,7 +315,7 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
             if (item is null)
                 return OperationLogWriteResult.Fail($"缺少 SQL 条目 {InsertSqlId}。");
 
-            var result = _appDb.Run(item, ToParameters(entry));
+            var result = _appDb.RunReturningRowId(item, ToParameters(entry), out var rowId);
 
             // 只判 HasError 是不够的：影响 0 行意味着记录并没有写进去，同样必须按失败处理。
             // MES DISCOEQPNO 同步（WireDiscoEqpSyncService.MesWriteFailed）用同一判定——
@@ -323,7 +325,7 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
             if (result.RowsAffected < 1)
                 return OperationLogWriteResult.Fail("记录未写入（影响 0 行）。");
 
-            return OperationLogWriteResult.Ok();
+            return OperationLogWriteResult.Ok() with { RowId = rowId };
         }
         catch (Exception ex)
         {
@@ -426,8 +428,8 @@ public sealed class NullOperationLogSink : IOperationLogSink, IOperationLogCompe
     public OperationLogWriteResult TryWrite(OperationLogEntry entry) => OperationLogWriteResult.Ok();
 
     /// <summary>记录功能已停用，没有可补写的行；保持静默（不产生告警）。</summary>
-    public OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs) =>
-        OperationLogWriteResult.Ok();
+    public OperationLogWriteResult BackfillDoorTs(long? rowId, string actionType, string ts,
+        string? doorOpenTs, string? doorCloseTs) => OperationLogWriteResult.Ok();
 
     /// <summary>记录功能已停用，没有可更新的行；保持静默。</summary>
     public OperationLogWriteResult UpdateFailureDetail(string actionType, string ts, string detail) =>

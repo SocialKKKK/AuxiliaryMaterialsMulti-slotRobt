@@ -35,6 +35,9 @@ public sealed class MhDoorOnlyService
 
         /// <summary>开门时该格账面已有的批号（取出时被取走的那批）。</summary>
         public string? ClearedLot { get; init; }
+
+        /// <summary>那条开门记录的 rowid —— 关门回填按它定位（ts 只到秒，同秒两条会串）。</summary>
+        public long? RowId { get; init; }
     }
 
     public event EventHandler<string>? SessionAutoEnded;
@@ -117,6 +120,8 @@ public sealed class MhDoorOnlyService
 
         var openedAt = result.OpenedAtUtc ?? OperationLogTime.UtcNowText();
 
+        var rowId = _doorLog.RecordOpened(actionType, result.SlotNo, op, openedAt, clearedLot);
+
         lock (_trackGate)
             _doorOpenLogs[result.SlotId] = new OpenedDoorRecord
             {
@@ -125,14 +130,13 @@ public sealed class MhDoorOnlyService
                 OpenedAtUtc = openedAt,
                 ActionType = actionType,
                 ClearedLot = clearedLot,
+                RowId = rowId,
             };
-
-        _doorLog.RecordOpened(actionType, result.SlotNo, op, openedAt, clearedLot);
     }
 
     /// <summary>关门确认：把 door_close_ts 回填到该格那条开门记录（一格一条，不涉及批次）。</summary>
     private void RecordDoorClosedIfTracked(OpenedDoorRecord opened, string closedAt) =>
-        _doorLog.RecordClosed(opened.ActionType, opened.OpenedAtUtc, closedAt);
+        _doorLog.RecordClosed(opened.RowId, opened.ActionType, opened.OpenedAtUtc, closedAt);
 
     /// <summary>
     /// 开门时该格账面已有的批号 —— 取出时被取走的那批。

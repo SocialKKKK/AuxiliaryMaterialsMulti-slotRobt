@@ -29,7 +29,7 @@ public class OperationLogRetentionTests
     /// </summary>
     private static readonly Regex AllowedDoorTsBackfill = new(
         @"^update\s+app_operation_log\s+set\s+door_open_ts\s*=\s*:door_open_ts\s*,\s*door_close_ts\s*=\s*:door_close_ts"
-        + @"\s+where\s+action_type\s*=\s*:action_type\s+and\s+ts\s*=\s*:ts\s+and\s+door_close_ts\s+is\s+null\s*;$",
+        + @"\s+where\s+id\s*=\s*:id\s+and\s+door_close_ts\s+is\s+null\s*;$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -103,7 +103,7 @@ public class OperationLogRetentionTests
     [InlineData("DELETE FROM app_operation_log\nWHERE id = 1;", true)]
     [InlineData(
         "UPDATE app_operation_log SET door_open_ts = :door_open_ts, door_close_ts = :door_close_ts"
-        + " WHERE action_type = :action_type AND ts = :ts AND door_close_ts IS NULL;",
+        + " WHERE id = :id AND door_close_ts IS NULL;",
         false)]
     [InlineData(
         "UPDATE app_operation_log SET detail = :detail WHERE action_type = :action_type AND ts = :ts AND result = '失败';",

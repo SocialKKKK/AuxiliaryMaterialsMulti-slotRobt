@@ -180,6 +180,36 @@ public sealed class SqliteDb
         return result;
     }
 
+    /// <summary>
+    /// 执行一条 INSERT 并返回它插入行的 rowid（同一条连接上紧接着取 last_insert_rowid()）。
+    ///
+    /// 记录表的门时刻回填必须按这个唯一主键定位：ts 只精确到秒，而批量开门是每格 400ms，
+    /// **同一种动作在同一秒出现两条是常态**；按 (action_type, ts) 回填会把两条都填成
+    /// 同一个关门时刻，而且 UPDATE 是先执行、后检查影响行数，检查拦不住已经写坏的行。
+    /// </summary>
+    public DbResult ExecuteReturningRowId(string sql, IDictionary<string, object?> parameters, out long? rowId)
+    {
+        rowId = null;
+        var result = new DbResult { RenderedSql = RenderForDisplay(sql, parameters) };
+        try
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            Bind(cmd, sql, parameters);
+            result.RowsAffected = cmd.ExecuteNonQuery();
+
+            cmd.CommandText = "SELECT last_insert_rowid();";
+            cmd.Parameters.Clear();
+            rowId = Convert.ToInt64(cmd.ExecuteScalar());
+        }
+        catch (Exception ex)
+        {
+            result.Error = ex.Message;
+        }
+        return result;
+    }
+
     public DbResult Execute(string sql, IDictionary<string, object?> parameters)
     {
         var result = new DbResult { RenderedSql = RenderForDisplay(sql, parameters) };

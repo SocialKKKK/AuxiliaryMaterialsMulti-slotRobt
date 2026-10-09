@@ -174,7 +174,7 @@ public sealed class OperationLogPendingStore
             if (!string.IsNullOrWhiteSpace(entry.DoorCloseTs)) continue;   // 已经补过
 
             var patched = entry with { DoorOpenTs = doorOpenTs ?? entry.DoorOpenTs, DoorCloseTs = doorCloseTs };
-            Write(
+            var result = _appDb.RunRaw(
                 """
                 UPDATE operation_log_pending
                 SET entry_json = :entry_json
@@ -184,8 +184,12 @@ public sealed class OperationLogPendingStore
                 {
                     ["entry_json"] = JsonSerializer.Serialize(patched),
                     ["id"] = row.Id,
-                });
-            return true;
+                },
+                isWrite: true);
+
+            // 必须检查执行结果：早先这里调 Write 而 Write 丢弃了返回值，
+            // UPDATE 失败也报成功 → 门时刻实际没保存，却当成补好了。
+            return !result.HasError && result.RowsAffected == 1;
         }
 
         return false;

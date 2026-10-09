@@ -1,0 +1,307 @@
+[
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "焊丝发放系统"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "DEMO"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOp",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMh",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMaint",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMesRecon",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbAgv",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOpLog",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "当前移动任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "RcsConfigText",
+        "name":  "RCS 已连接（后台自动刷新）"
+    },
+    {
+        "type":  "Text",
+        "id":  "TaskSummaryText",
+        "name":  "无进行中任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "订单状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "OrderStateText",
+        "name":  "—"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "进度"
+    },
+    {
+        "type":  "Text",
+        "id":  "TaskProgressText",
+        "name":  "—"
+    },
+    {
+        "type":  "Button",
+        "id":  "CancelOrderBtn",
+        "name":  "取消当前任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "取消当前任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "AGV 状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "电量"
+    },
+    {
+        "type":  "Text",
+        "id":  "BatteryText",
+        "name":  "77%"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "当前站点"
+    },
+    {
+        "type":  "Text",
+        "id":  "PositionText",
+        "name":  "线边焊丝柜（OP）（597）"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "定位状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "LocationText",
+        "name":  "定位中"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "系统状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "SysStateText",
+        "name":  "IDLE"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "移动状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "MoveStateText",
+        "name":  "AT_FINISHED"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "急停状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "EmergencyText",
+        "name":  "OK"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "控车会话"
+    },
+    {
+        "type":  "Text",
+        "id":  "SessionStateText",
+        "name":  "Idle"
+    },
+    {
+        "type":  "Button",
+        "id":  "ReleaseEmergencyBtn",
+        "name":  "解除急停"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "解除急停"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "手动控车与回充"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "RCS 由后台自动连接；仅 IDLE 且无进行中订单时可下单。"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "目标作业站"
+    },
+    {
+        "type":  "ComboBox",
+        "id":  "StationCombo",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "MoveBtn",
+        "name":  "前往所选作业站"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "前往所选作业站"
+    },
+    {
+        "type":  "Text",
+        "id":  "ChargeTargetText",
+        "name":  "充电点：物料多仓位充电点（站点 520）"
+    },
+    {
+        "type":  "Text",
+        "id":  "ChargePolicyText",
+        "name":  "自动回充：电量 ≤ 30% 下充电单；≥ 90% 返航去充电前作业站，否则回 物料间焊丝柜（MH）。"
+    },
+    {
+        "type":  "Button",
+        "id":  "ChargeBtn",
+        "name":  "前往充电点（下充电单）"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "前往充电点（下充电单）"
+    },
+    {
+        "type":  "Text",
+        "id":  "StatusText",
+        "name":  "控车 AGV | MES✓ | IO在线(4/4) | RCS✓"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "IO"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "C4"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "67"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "24"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "BE"
+    },
+    {
+        "type":  "Text",
+        "id":  "ClockText",
+        "name":  "2026-10-09 13:43:36"
+    }
+]

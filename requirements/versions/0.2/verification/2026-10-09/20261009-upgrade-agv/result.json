@@ -1,0 +1,33 @@
+{
+    "ok":  true,
+    "error":  null,
+    "process":  "WireCabinet.Hmi",
+    "startedAt":  "2026-10-09T14:08:41",
+    "endedAt":  "2026-10-09T14:08:44",
+    "steps":  [
+                  {
+                      "i":  1,
+                      "action":  "click",
+                      "ok":  true,
+                      "detail":  "id=RbAgv via pattern:SelectionItemPattern"
+                  },
+                  {
+                      "i":  2,
+                      "action":  "sleep",
+                      "ok":  true,
+                      "detail":  "slept 1000ms"
+                  },
+                  {
+                      "i":  3,
+                      "action":  "screenshot",
+                      "ok":  true,
+                      "detail":  "00-agv.png 1024x728"
+                  },
+                  {
+                      "i":  4,
+                      "action":  "dump",
+                      "ok":  true,
+                      "detail":  "tree.json (61 entries)"
+                  }
+              ]
+}

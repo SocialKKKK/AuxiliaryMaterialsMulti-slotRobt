@@ -1,0 +1,677 @@
+[
+    {
+        "type":  "Window",
+        "id":  "",
+        "name":  "焊丝发放系统 - 演示界面"
+    },
+    {
+        "type":  "Window",
+        "id":  "",
+        "name":  "存取记录验证"
+    },
+    {
+        "type":  "TitleBar",
+        "id":  "TitleBar",
+        "name":  "存取记录验证"
+    },
+    {
+        "type":  "MenuBar",
+        "id":  "SystemMenuBar",
+        "name":  "系统菜单栏"
+    },
+    {
+        "type":  "MenuItem",
+        "id":  "Item 1",
+        "name":  "系统"
+    },
+    {
+        "type":  "Button",
+        "id":  "Close",
+        "name":  "关闭"
+    },
+    {
+        "type":  "Text",
+        "id":  "PromptText",
+        "name":  "请输入物料员或维护密码"
+    },
+    {
+        "type":  "Edit",
+        "id":  "PasswordBox",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "取消"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "取消"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "确定"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "确定"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "焊丝发放系统"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "DEMO"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOp",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "操作员 OP"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMh",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "物料员 MH"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMaint",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "维护 MAINT"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbMesRecon",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "MES 对账"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbAgv",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "控车 AGV"
+    },
+    {
+        "type":  "RadioButton",
+        "id":  "RbOpLog",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "存取记录"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "—"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "×"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "当前移动任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "RcsConfigText",
+        "name":  "RCS 已连接（后台自动刷新）"
+    },
+    {
+        "type":  "Text",
+        "id":  "TaskSummaryText",
+        "name":  "无进行中任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "订单状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "OrderStateText",
+        "name":  "—"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "进度"
+    },
+    {
+        "type":  "Text",
+        "id":  "TaskProgressText",
+        "name":  "—"
+    },
+    {
+        "type":  "Button",
+        "id":  "CancelOrderBtn",
+        "name":  "取消当前任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "取消当前任务"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "AGV 状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "电量"
+    },
+    {
+        "type":  "Text",
+        "id":  "BatteryText",
+        "name":  "100%"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "当前站点"
+    },
+    {
+        "type":  "Text",
+        "id":  "PositionText",
+        "name":  "物料多仓位充电点（520）"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "定位状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "LocationText",
+        "name":  "定位中"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "系统状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "SysStateText",
+        "name":  "IDLE"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "移动状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "MoveStateText",
+        "name":  "AT_FINISHED"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "急停状态"
+    },
+    {
+        "type":  "Text",
+        "id":  "EmergencyText",
+        "name":  "OK"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "控车会话"
+    },
+    {
+        "type":  "Text",
+        "id":  "SessionStateText",
+        "name":  "Idle"
+    },
+    {
+        "type":  "Button",
+        "id":  "ReleaseEmergencyBtn",
+        "name":  "解除急停"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "解除急停"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "手动控车与回充"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "空闲或充电中可前往作业站；充电任务先结束再发车。"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "目标作业站"
+    },
+    {
+        "type":  "ComboBox",
+        "id":  "StationCombo",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "MoveBtn",
+        "name":  "前往所选作业站"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "前往所选作业站"
+    },
+    {
+        "type":  "Text",
+        "id":  "ChargeTargetText",
+        "name":  "充电点：物料多仓位充电点（站点 520）"
+    },
+    {
+        "type":  "Text",
+        "id":  "ChargePolicyText",
+        "name":  "自动回充：电量 ≤ 30% 下充电单；≥ 90% 返航去充电前作业站，否则回 物料间焊丝柜（MH）。"
+    },
+    {
+        "type":  "Button",
+        "id":  "ChargeBtn",
+        "name":  "前往充电点（下充电单）"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "前往充电点（下充电单）"
+    },
+    {
+        "type":  "Text",
+        "id":  "StatusText",
+        "name":  "返航失败：RCS 操作失败：目的地站点不存在"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "IO"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "C4"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "67"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "24"
+    },
+    {
+        "type":  "Text",
+        "id":  "",
+        "name":  "BE"
+    },
+    {
+        "type":  "Text",
+        "id":  "ClockText",
+        "name":  "2026-10-09 14:31:23"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "开始"
+    },
+    {
+        "type":  "Button",
+        "id":  "4103",
+        "name":  "搜索"
+    },
+    {
+        "type":  "Pane",
+        "id":  "40965",
+        "name":  ""
+    },
+    {
+        "type":  "ToolBar",
+        "id":  "",
+        "name":  "运行中的应用程序"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "命令提示符 - 1 个运行窗口"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "屏幕键盘"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "Microsoft 365 Copilot"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "1 - 副本 - 副本 - 1 个运行窗口"
+    },
+    {
+        "type":  "Pane",
+        "id":  "303",
+        "name":  ""
+    },
+    {
+        "type":  "Button",
+        "id":  "1502",
+        "name":  "通知 V 形"
+    },
+    {
+        "type":  "ToolBar",
+        "id":  "1504",
+        "name":  "用户提示通知区域"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "未识别的网络\n无法连接到 Internet"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "触摸键盘"
+    },
+    {
+        "type":  "Pane",
+        "id":  "308",
+        "name":  "任务栏输入指示"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "任务栏输入指示 - 英语(美国)"
+    },
+    {
+        "type":  "Pane",
+        "id":  "",
+        "name":  "系统时钟, 14:31, ‎2026/‎10/‎9"
+    },
+    {
+        "type":  "Button",
+        "id":  "",
+        "name":  "操作中心，5 个新通知"
+    },
+    {
+        "type":  "Button",
+        "id":  "307",
+        "name":  "显示桌面"
+    },
+    {
+        "type":  "Window",
+        "id":  "Console Window",
+        "name":  "管理员: C:\\Windows\\SYSTEM32\\cmd.exe"
+    },
+    {
+        "type":  "ScrollBar",
+        "id":  "Vertical ScrollBar",
+        "name":  "垂直滚动条"
+    },
+    {
+        "type":  "Button",
+        "id":  "SmallDecrement",
+        "name":  "小幅度后滚"
+    },
+    {
+        "type":  "Button",
+        "id":  "LargeDecrement",
+        "name":  "大幅度后滚"
+    },
+    {
+        "type":  "Thumb",
+        "id":  "Thumb",
+        "name":  "缩略"
+    },
+    {
+        "type":  "Button",
+        "id":  "LargeIncrement",
+        "name":  "大幅度前滚"
+    },
+    {
+        "type":  "Button",
+        "id":  "SmallIncrement",
+        "name":  "小幅度前滚"
+    },
+    {
+        "type":  "TitleBar",
+        "id":  "TitleBar",
+        "name":  "管理员: C:\\Windows\\SYSTEM32\\cmd.exe"
+    },
+    {
+        "type":  "MenuBar",
+        "id":  "SystemMenuBar",
+        "name":  "系统菜单栏"
+    },
+    {
+        "type":  "MenuItem",
+        "id":  "Item 1",
+        "name":  "系统"
+    },
+    {
+        "type":  "Button",
+        "id":  "Minimize",
+        "name":  "最小化"
+    },
+    {
+        "type":  "Button",
+        "id":  "Maximize",
+        "name":  "最大化"
+    },
+    {
+        "type":  "Button",
+        "id":  "Close",
+        "name":  "关闭"
+    },
+    {
+        "type":  "Document",
+        "id":  "Text Area",
+        "name":  "Text Area"
+    },
+    {
+        "type":  "Pane",
+        "id":  "",
+        "name":  "Program Manager"
+    },
+    {
+        "type":  "List",
+        "id":  "1",
+        "name":  "桌面"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "回收站"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "Microsoft Edge"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "此电脑"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "控制面板"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "StandAGVClient - 快捷方式"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "AuxiliaryMaterialsMulti-slotRobt"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新厂前线物料二号260702"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新厂物料间二号"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "chrome - 快捷方式"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "向日葵远程控制"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "LidarView"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "Install-OpenSSH-Server"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "1"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "-"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建文本文档 (2) - 副本 - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "StandAGVClient - 快捷方式 - 副本 - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建文本文档 (2) - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "1 - 副本 - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "StandAGVClient - 快捷方式 - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建文本文档 (2)"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "1 - 副本"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建文本文档 (3)"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "windowsdesktop-runtime-8.0.28-win-x64"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建 文本文档"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "0413-2026-04-13-09-17-30"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建 RTF 文档"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "AGV1-2025-03-28-15-56-46(增加左右避障雷达)V1.1"
+    },
+    {
+        "type":  "ListItem",
+        "id":  "",
+        "name":  "新建文本文档"
+    }
+]

@@ -1,0 +1,26 @@
+{
+  "checkedOn": "2026-10-09",
+  "source": "GET /api/imap/v1/mapInfo/stations/22",
+  "mapId": 22,
+  "mapName": "新厂前线",
+  "count": 578,
+  "configuredMhDestination": 596,
+  "configuredMhDestinationExists": false,
+  "matchedStations": [
+    {
+      "id": 520,
+      "name": "物料多仓位充电点"
+    },
+    {
+      "id": 597,
+      "name": "站点597"
+    }
+  ],
+  "fleetSync": {
+    "lastUpdate": "2026-09-30 11:16:26",
+    "unsynced": 15,
+    "synced": 1,
+    "thisVehicleState": "已同步",
+    "thisVehicle": "新厂前线物料多仓位2"
+  }
+}

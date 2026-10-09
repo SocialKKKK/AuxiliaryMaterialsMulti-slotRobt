@@ -1,0 +1,14 @@
+﻿{
+    "deployedAt":  "2026-10-09T14:08:11.5965917+08:00",
+    "sourceCommit":  "697d085",
+    "files":  149,
+    "pid":  2800,
+    "backup":  "C:\\autotest\\upgrade-20261009-140134\\backup",
+    "databaseBackup":  "C:\\Users\\HT\\Desktop\\AuxiliaryMaterialsMulti-slotRobt\\requirements\\versions\\0.1\\wire-cabinet\\data\\backup\\upgrade-20261009-140134",
+    "hmiHash":  "826376086830729BEA3B7F85EC27F2257C2AD97316F7722CF3348D9DE3F2742C",
+    "rcsHash":  "06F95DB21CCA66C8DB5B7846C070374D6920B0884BACEEC06199837DD4640692",
+    "effectiveConfigPreserved":  true,
+    "ioConfigPreserved":  true,
+    "thresholds":  "30/90",
+    "rollback":  "C:\\autotest\\deploy-rollback-20261009.ps1"
+}

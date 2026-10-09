@@ -155,14 +155,27 @@ def cmd_pairs(conn: sqlite3.Connection, tz: timezone, args) -> int:
 
     1. 凡写了 door_close_ts 的记录，必须同时有 door_open_ts，且关门不早于开门；
     2. 无指令开门（is_uncommanded = 1）仍是异常配对——「开门一条 + 关门一条」，关门必须能配回那条开门。
+
+    **务必带 --since**：口径优化之前写的 854 条「无来源关门」（库内记 open、重启后 DI 确认锁闭补的，
+    door_close_ts 有值而 door_open_ts 为空）是老数据的既成事实，10-09 修掉后不再产生；
+    不带 --since 会把它们全报成不一致，看着像新版本坏了。
     """
+    since = getattr(args, "since", None)
+
+    def scoped(condition: str) -> tuple[str, list]:
+        if since:
+            return f"{condition} AND ts >= ?", [since]
+        return condition, []
+
+    close_where, close_params = scoped("door_close_ts IS NOT NULL AND door_close_ts <> ''")
     with_close = conn.execute(
-        """
+        f"""
         SELECT id, action_type, slot_no, ts, door_open_ts, door_close_ts
         FROM app_operation_log
-        WHERE door_close_ts IS NOT NULL AND door_close_ts <> ''
+        WHERE {close_where}
         ORDER BY ts
-        """
+        """,
+        close_params,
     ).fetchall()
 
     inconsistent: list[dict] = []
@@ -186,20 +199,17 @@ def cmd_pairs(conn: sqlite3.Connection, tz: timezone, args) -> int:
         )
 
     # 无指令开门的异常配对（仍独立成条，见草案 §3.4）
+    open_where, open_params = scoped("is_uncommanded = 1 AND action_type IN ('door_open', 'mh_open_slot')")
     uncommanded_opens = conn.execute(
-        """
-        SELECT slot_no, ts FROM app_operation_log
-        WHERE is_uncommanded = 1 AND action_type IN ('door_open', 'mh_open_slot')
-        ORDER BY ts
-        """
+        f"SELECT slot_no, ts FROM app_operation_log WHERE {open_where} ORDER BY ts",
+        open_params,
     ).fetchall()
     open_keys = {(o["slot_no"] or "", o["ts"]) for o in uncommanded_opens}
 
+    uc_where, uc_params = scoped("action_type = 'door_close' AND is_uncommanded = 1")
     uncommanded_closes = conn.execute(
-        """
-        SELECT slot_no, ts, door_open_ts FROM app_operation_log
-        WHERE action_type = 'door_close' AND is_uncommanded = 1 ORDER BY ts
-        """
+        f"SELECT slot_no, ts, door_open_ts FROM app_operation_log WHERE {uc_where} ORDER BY ts",
+        uc_params,
     ).fetchall()
 
     unlinked: list[dict] = []
@@ -215,16 +225,17 @@ def cmd_pairs(conn: sqlite3.Connection, tz: timezone, args) -> int:
             }
         )
 
+    open_only_where, open_only_params = scoped(
+        "door_open_ts IS NOT NULL AND door_open_ts <> '' AND (door_close_ts IS NULL OR door_close_ts = '')"
+    )
     still_open = conn.execute(
-        """
-        SELECT id, action_type, slot_no, ts, door_open_ts FROM app_operation_log
-        WHERE door_open_ts IS NOT NULL AND door_open_ts <> ''
-          AND (door_close_ts IS NULL OR door_close_ts = '')
-        ORDER BY ts
-        """
+        f"SELECT id, action_type, slot_no, ts, door_open_ts FROM app_operation_log WHERE {open_only_where} ORDER BY ts",
+        open_only_params,
     ).fetchall()
 
     result = {
+        "since_utc": since,
+        "note": "未带 --since 时按全表判；口径优化前的无来源关门属历史既成事实，会报成不一致。",
         "records_with_door_close_ts": len(with_close),
         "inconsistent_door_timestamps": inconsistent,
         "uncommanded_close_events": len(uncommanded_closes),
@@ -290,26 +301,35 @@ def cmd_verify(conn: sqlite3.Connection, tz: timezone, args) -> int:
         record(f"{code} failures carry error_info", got == 0, {"rows_missing_reason": got})
 
     # 5. door timestamps are self-consistent fields on the record (口径优化 2026-10-09)
+    #
+    # 必须限定在 since_utc 窗口内：口径优化之前写的 854 条「无来源关门」（door_close_ts 有值、
+    # door_open_ts 为空，10-09 已修掉不再产生）是老数据的既成事实，扫全表会把它们报成失败。
     if exp.get("require_paired_doors"):
+        window = "AND ts >= ?" if since else ""
+        wparams: tuple = (since,) if since else ()
         bad = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS n FROM app_operation_log
             WHERE door_close_ts IS NOT NULL AND door_close_ts <> ''
+              {window}
               AND (door_open_ts IS NULL OR door_open_ts = '' OR door_close_ts < door_open_ts)
-            """
+            """,
+            wparams,
         ).fetchone()["n"]
         record("door timestamps are self-consistent (open present, close >= open)", bad == 0, {"bad_rows": bad})
 
         unlinked = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS n FROM app_operation_log c
             WHERE c.action_type = 'door_close' AND c.is_uncommanded = 1
+              {"AND c.ts >= ?" if since else ""}
               AND NOT EXISTS (
                 SELECT 1 FROM app_operation_log o
                 WHERE o.slot_no = c.slot_no AND o.is_uncommanded = 1
                   AND o.action_type IN ('door_open','mh_open_slot')
                   AND o.ts = c.door_open_ts)
-            """
+            """,
+            wparams,
         ).fetchone()["n"]
         record("uncommanded door_close rows link to their open", unlinked == 0, {"unlinked": unlinked})
 
@@ -360,6 +380,12 @@ def main() -> int:
     parser.add_argument("--expect", help="expectations json (verify only)")
     parser.add_argument("-n", type=int, default=20, help="rows for tail (default 20)")
     parser.add_argument("--tz", default=None, help="display timezone, e.g. Asia/Shanghai")
+    parser.add_argument(
+        "--since",
+        default=None,
+        help="UTC lower bound 'YYYY-MM-DD HH:MM:SS'；pairs 用它只看该时刻之后的记录"
+        "（不带会把口径优化前的历史无来源关门报成不一致）",
+    )
     args = parser.parse_args()
 
     if args.command == "verify" and not args.expect:

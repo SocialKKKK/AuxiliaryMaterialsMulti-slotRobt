@@ -129,7 +129,6 @@ public sealed class FlowEngine
         {
             var closedAt = NowUtcText();
             ctx.Runtime[DoorCloseTsKey] = closedAt;
-            LogDoorEvent(node, FlowDoorSlotNo(node), closedAt, opening: false);
             BackfillBusinessDoorTs(node, closedAt);
         }
 
@@ -347,7 +346,6 @@ public sealed class FlowEngine
             {
                 var openedAt = NowUtcText();
                 Context!.Runtime[DoorOpenTsKey] = openedAt;
-                LogDoorEvent(node, FlowDoorSlotNo(node), openedAt, opening: true);
             }
         }
         else
@@ -415,7 +413,6 @@ public sealed class FlowEngine
             Context!.Runtime["last_closed_slot_id"] = closed.Value.ToString(CultureInfo.InvariantCulture);
             var closedAt = NowUtcText();
             Context.Runtime[DoorCloseTsKey] = closedAt;
-            LogDoorEvent(node, FlowDoorSlotNo(node), closedAt, opening: false);
         }
 
         var (next, rf) = Route(node, "success");
@@ -511,45 +508,6 @@ public sealed class FlowEngine
     private const string DoorCloseTsKey = "door_close_ts";
     private const string DoorClosedOutput = "closed";
 
-    private string? FlowDoorSlotNo(FlowNode node) => node.Id switch
-    {
-        "openReturnSlot" or "closeReturnSlotDoor" => Field("findReturnSlot", "return_slot_no"),
-        "openIssueSlot" or "closeIssueSlotDoor" => Field("queryMatchedAvailableWire", "slot_no"),
-        "openAvailableSlot" or "closeAvailableSlotDoor" => Field("checkAvailableSlot", "slot_no"),
-        _ => null
-    };
-
-    private void LogDoorEvent(FlowNode node, string? slotNo, string eventAt, bool opening)
-    {
-        if (_svc.OperationLog is not { } sink || string.IsNullOrWhiteSpace(slotNo)) return;
-        // 业务流程的门时刻已经挂在业务记录上（口径优化 §2），不再单独成条。
-        if (FlowProducesBusinessRecord) return;
-        var opFlow = Flow!.FlowId.StartsWith("operator_", StringComparison.OrdinalIgnoreCase);
-        var lotNo = node.Id.Contains("Return", StringComparison.OrdinalIgnoreCase)
-            ? Field("inputReturnedWireLotNo", "returned_wire_lot_no")
-            : opFlow ? Field("queryMatchedAvailableWire", "matched_available_wire_lot_no")
-                : Field("inputAvailableWireLotNo", "available_wire_lot_no");
-        var entry = new OperationLogEntry
-        {
-            Ts = eventAt,
-            ActionType = opening ? OperationLogActionTypes.DoorOpen : OperationLogActionTypes.DoorClose,
-            FlowId = Flow.FlowId,
-            NodeId = node.Id,
-            SlotNo = slotNo,
-            LotNo = lotNo,
-            OperatorRole = opFlow ? "OP" : "MH",
-            OperatorId = opFlow ? Field("inputOperatorWorkInfo", "operator_id") : RuntimeValue(OperatorIdKey),
-            OperatorName = opFlow ? Field("queryOPById", "operator_name") : RuntimeValue(OperatorNameKey),
-            OperatorTeam = opFlow ? Field("inputOperatorWorkInfo", "work_group") : RuntimeValue(OperatorTeamKey),
-            DoorOpenTs = opening ? eventAt : RuntimeValue(DoorOpenTsKey),
-            DoorCloseTs = opening ? null : eventAt,
-            Result = "成功",
-            Message = opening ? $"格口 {slotNo} 已开门" : $"格口 {slotNo} 已确认关门"
-        };
-        var write = sink.TryWrite(entry);
-        if (!write.Success)
-            System.Diagnostics.Trace.TraceWarning($"格口{(opening ? "开门" : "关门")}记录写入失败：{write.Error}");
-    }
 
     /// <summary>
     /// 操作人信息在运行期上下文（FlowRunContext.Runtime）里的键。
@@ -584,22 +542,6 @@ public sealed class FlowEngine
         ["closeIssueSlotDoor"] = OpIssueRecordTsKey,
     };
 
-    private bool? _flowProducesBusinessRecord;
-
-    /// <summary>
-    /// 本流程是否会产生业务记录（口径优化 §2，2026-10-09）。是则开门 / 关门降级为业务记录上的
-    /// <c>door_open_ts</c> / <c>door_close_ts</c>，不再单独写 door_open / door_close。
-    ///
-    /// 之所以能安全地整流程抑制：这两个流程的门都在「写业务记录」之后才开——
-    /// 存料的门在 openAvailableSlot，记录在 updateDB；领用 / 归还的门在 openReturnSlot /
-    /// openIssueSlot，记录在 submitWireReturn / submitWireIssue（都在开门之前）。
-    /// 所以不会出现「门开过、却没有任何业务记录」的空档。
-    /// 反过来，MH 单格 / 批量开门与维护试开没有业务记录，门事件仍单独成条。
-    /// </summary>
-    private bool FlowProducesBusinessRecord => _flowProducesBusinessRecord ??= Flow!.Nodes.Values.Any(n =>
-        string.Equals(n.SqlId, MhBindWireSqlId, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(n.SqlId, TakePickupSqlId, StringComparison.OrdinalIgnoreCase)
-        || OpActionByNodeId.ContainsKey(n.Id));
 
     /// <summary>本节点是否对应一个需要记录的存取动作；是则写一条（成功与失败都写）。</summary>
     private void LogFlowAction(

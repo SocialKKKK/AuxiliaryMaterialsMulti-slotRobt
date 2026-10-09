@@ -23,8 +23,8 @@ public sealed class MhDoorOnlyService
     private readonly object _trackGate = new();
 
     /// <summary>
-    /// 一次开门对应的一条记录（记录口径优化 2026-10-09）：单格 / 试开只有自己，
-    /// 批量开门一次批量一条、覆盖整批。关门时按它回填 door_close_ts。
+    /// 一个格口一次开门对应的一条记录（2026-10-09 口径收敛）：**一个格口一条**，
+    /// 批量开门也是逐格一条（打开 53 格 = 53 条）。关门时按它回填 door_close_ts。
     /// </summary>
     private sealed class OpenedDoorRecord
     {
@@ -33,19 +33,8 @@ public sealed class MhDoorOnlyService
         public required string OpenedAtUtc { get; init; }
         public required string ActionType { get; init; }
 
-        /// <summary>开门时该格账面已有的批号（「开门即清空」要清掉的那批）。</summary>
+        /// <summary>开门时该格账面已有的批号（取出时被取走的那批）。</summary>
         public string? ClearedLot { get; init; }
-
-        /// <summary>批量开门时指向所属批次；单格 / 试开为 null。</summary>
-        public BatchDoorGroup? BatchGroup { get; init; }
-    }
-
-    /// <summary>一次批量开门的记录与它覆盖的格口；整批关完才回填 door_close_ts。</summary>
-    private sealed class BatchDoorGroup
-    {
-        public required string OpenedAtUtc { get; init; }
-        public required string ActionType { get; init; }
-        public HashSet<long> SlotIds { get; } = [];
     }
 
     public event EventHandler<string>? SessionAutoEnded;
@@ -114,47 +103,36 @@ public sealed class MhDoorOnlyService
         lock (_trackGate) _openedInSession.Remove(slotId);
     }
 
-    /// <summary>写一条单格开门记录，并记住它（关门时回填 door_close_ts 用）。</summary>
+    /// <summary>
+    /// 一个格口一条：开门成功就落库并登记，关门时回填 door_close_ts。
+    ///
+    /// 登记必须**在开门回调里当场做**（不能等整批跑完）——批量是每格 400ms 逐格开的，
+    /// 53 格要跑 20 秒；这期间若有格口被关（DI 确认锁闭 → 巡检调 NotifySlotsClosedAsync），
+    /// 没登记就会漏掉"按账面清空"和关门时刻回填。
+    /// </summary>
     private void RecordDoorOpened(string actionType, OpenSlotResult result, DoorOperator op,
-        BatchDoorGroup? batchGroup = null, string? clearedLot = null)
+        string? clearedLot = null)
     {
         if (!result.Success) return;
 
         var openedAt = result.OpenedAtUtc ?? OperationLogTime.UtcNowText();
-        var recordAt = batchGroup?.OpenedAtUtc ?? openedAt;
 
         lock (_trackGate)
             _doorOpenLogs[result.SlotId] = new OpenedDoorRecord
             {
                 SlotId = result.SlotId,
                 SlotNo = result.SlotNo,
-                OpenedAtUtc = recordAt,
+                OpenedAtUtc = openedAt,
                 ActionType = actionType,
                 ClearedLot = clearedLot,
-                BatchGroup = batchGroup,
             };
 
-        // 批量走 RecordBatchOpened（一次批量一条），这里只为单格 / 试开落库。
-        if (batchGroup is null)
-            _doorLog.RecordOpened(actionType, result.SlotNo, op, recordAt, clearedLot);
+        _doorLog.RecordOpened(actionType, result.SlotNo, op, openedAt, clearedLot);
     }
 
-    /// <summary>
-    /// 关门回填。批量开门是「一次批量一条」记录，要等这批格口**全部**关完再补，
-    /// 这样 door_close_ts 才是最后一次关门的时刻（与草案 §3.2 的例子一致）。
-    /// </summary>
-    private void RecordDoorClosedIfTracked(OpenedDoorRecord opened, string closedAt)
-    {
-        if (opened.BatchGroup is { } group)
-        {
-            group.SlotIds.Remove(opened.SlotId);
-            if (group.SlotIds.Count > 0) return;
-            _doorLog.RecordClosed(group.ActionType, group.OpenedAtUtc, closedAt);
-            return;
-        }
-
+    /// <summary>关门确认：把 door_close_ts 回填到该格那条开门记录（一格一条，不涉及批次）。</summary>
+    private void RecordDoorClosedIfTracked(OpenedDoorRecord opened, string closedAt) =>
         _doorLog.RecordClosed(opened.ActionType, opened.OpenedAtUtc, closedAt);
-    }
 
     /// <summary>开门时该格账面已有的批号——「开门即清空」要清掉的那批（与 assume_empty 同口径）。</summary>
     private string? ReadClearedLotAtOpen(long slotId)
@@ -360,8 +338,8 @@ public sealed class MhDoorOnlyService
 
         if (result.Success)
         {
-            // 单格开门一条（§ 矩阵第 5 项）；「开门即清空」的被清批号是这条上的字段。
-            RecordDoorOpened(SlotDoorActionLog.MhOpenSlot, result, CurrentOperator,
+            // 开一格、取走一格 = 一条「MH 取出旧焊丝」；被取走的批号与门时刻都在这条上。
+            RecordDoorOpened(SlotDoorActionLog.MhTakeWire, result, CurrentOperator,
                 clearedLot: ReadClearedLotAtOpen(result.SlotId));
             TrackOpenedSlot(result.SlotId);
             NotifySlotStateChanged();
@@ -369,7 +347,7 @@ public sealed class MhDoorOnlyService
         else
         {
             // 开锁失败也留一条（§ 矩阵第 9 项）
-            _doorLog.RecordFailed(SlotDoorActionLog.MhOpenSlot, dto.SlotNo, result.Message, CurrentOperator);
+            _doorLog.RecordFailed(SlotDoorActionLog.MhTakeWire, dto.SlotNo, result.Message, CurrentOperator);
         }
 
         return result.Success
@@ -408,44 +386,6 @@ public sealed class MhDoorOnlyService
             : (false, "关门确认失败：锁反馈未闭合或格口不存在。");
     }
 
-    /// <summary>
-    /// 一次批量开门 = 一条记录（口径优化 §2）：格口清单 / 数量 / 被清批号都挂在这一条上，
-    /// 并把整批登记成一个批次，等它们全部关完再回填 door_close_ts。
-    /// <paramref name="trackSession"/> 为 true 时把这些格口纳入「待关门清空」的会话跟踪（MH 开门）；
-    /// 维护试开不改库存，故为 false。
-    /// </summary>
-    private void RecordBatchOpen(string actionType,
-        IReadOnlyList<(long SlotId, string SlotNo, string? ClearedLot)> slots, string openedAt, bool trackSession,
-        DoorOperator? op = null)
-    {
-        var clearedLots = slots.Select(s => s.ClearedLot).OfType<string>().ToList();
-        _doorLog.RecordBatchOpened(actionType, slots.Select(s => (s.SlotId, s.SlotNo)).ToList(),
-            op ?? CurrentOperator, openedAt, clearedLots);
-
-        var group = new BatchDoorGroup { OpenedAtUtc = openedAt, ActionType = actionType };
-        lock (_trackGate)
-        {
-            foreach (var (slotId, slotNo, clearedLot) in slots)
-            {
-                group.SlotIds.Add(slotId);
-                _doorOpenLogs[slotId] = new OpenedDoorRecord
-                {
-                    SlotId = slotId,
-                    SlotNo = slotNo,
-                    OpenedAtUtc = openedAt,
-                    ActionType = actionType,
-                    ClearedLot = clearedLot,
-                    BatchGroup = group,
-                };
-                if (trackSession)
-                    _openedInSession.Add(slotId);
-            }
-        }
-
-        if (trackSession)
-            NotifyOperationLockChanged();
-    }
-
     private async Task<(bool Ok, string Message)> OpenFilteredBatchAsync(string filter, string operationLabel, CancellationToken ct)
     {
         if (!EnsureNoOpenDoors(out var doorMsg))
@@ -458,9 +398,10 @@ public sealed class MhDoorOnlyService
         if (codes.Count == 0)
             return (true, "没有符合条件的已接线格口（禁用空格口不可打开）。");
 
-        var openedSlots = new List<(long SlotId, string SlotNo, string? ClearedLot)>();
-        string? openedAt = null;
+        var opened = 0;
 
+        // 逐格一条「MH 取出旧焊丝」：打开 53 格就是 53 条（口径收敛 2026-10-09）。
+        // 记录与登记都在回调里当场做，见 RecordDoorOpened 的说明。
         var batch = await _slots.OpenSlotsBatchAsync(
             codes,
             new BatchOpenOptions { IntervalMs = 400, StopOnFailure = true },
@@ -470,16 +411,14 @@ public sealed class MhDoorOnlyService
             {
                 if (r.Success)
                 {
-                    openedAt ??= r.OpenedAtUtc ?? OperationLogTime.UtcNowText();
-                    openedSlots.Add((r.SlotId, r.SlotNo, ReadClearedLotAtOpen(r.SlotId)));
+                    RecordDoorOpened(SlotDoorActionLog.MhTakeWire, r, CurrentOperator,
+                        clearedLot: ReadClearedLotAtOpen(r.SlotId));
+                    TrackOpenedSlot(r.SlotId);
+                    opened++;
                 }
                 else if (!string.IsNullOrWhiteSpace(r.SlotNo))
-                    _doorLog.RecordFailed(SlotDoorActionLog.MhOpenSlotsBatch, r.SlotNo, r.Message, CurrentOperator);
+                    _doorLog.RecordFailed(SlotDoorActionLog.MhTakeWire, r.SlotNo, r.Message, CurrentOperator);
             });
-
-        var opened = batch.Results.Count(r => r.Success);
-        if (openedSlots.Count > 0)
-            RecordBatchOpen(SlotDoorActionLog.MhOpenSlotsBatch, openedSlots, openedAt ?? OperationLogTime.UtcNowText(), trackSession: true);
 
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)
@@ -521,9 +460,10 @@ public sealed class MhDoorOnlyService
             return (true, emptyMsg);
         }
 
-        var openedSlots = new List<(long SlotId, string SlotNo, string? ClearedLot)>();
-        string? openedAt = null;
+        var opened = 0;
 
+        // 逐格一条「维护试开格口」；维护不改库存，故不纳入「待关门清空」的会话跟踪，
+        // 但仍逐格登记，以便关门时回填门时刻。
         var batch = await _slots.OpenSlotsBatchAsync(
             codes,
             new BatchOpenOptions { IntervalMs = 400, StopOnFailure = true },
@@ -533,18 +473,12 @@ public sealed class MhDoorOnlyService
             {
                 if (r.Success)
                 {
-                    openedAt ??= r.OpenedAtUtc ?? OperationLogTime.UtcNowText();
-                    openedSlots.Add((r.SlotId, r.SlotNo, null));
+                    RecordDoorOpened(SlotDoorActionLog.MaintTrialOpen, r, DoorOperator.Maint());
+                    opened++;
                 }
                 else if (!string.IsNullOrWhiteSpace(r.SlotNo))
                     _doorLog.RecordFailed(SlotDoorActionLog.MaintTrialOpen, r.SlotNo, r.Message, DoorOperator.Maint());
             });
-
-        var opened = batch.Results.Count(r => r.Success);
-        // 维护试开不改库存，故不纳入「待关门清空」的会话跟踪；但仍登记批次以便关门时回填门时刻。
-        if (openedSlots.Count > 0)
-            RecordBatchOpen(SlotDoorActionLog.MaintTrialOpen, openedSlots, openedAt ?? OperationLogTime.UtcNowText(),
-                trackSession: false, op: DoorOperator.Maint());
 
         var failed = batch.Results.FirstOrDefault(r => !r.Success);
         if (failed is not null)

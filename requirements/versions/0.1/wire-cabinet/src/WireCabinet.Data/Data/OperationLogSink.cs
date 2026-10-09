@@ -48,9 +48,6 @@ public sealed record OperationLogEntry
     /// <summary>JSON 明细：批量格口清单 / 被清批号 / 重复失败统计（count、first_ts、last_ts）。</summary>
     public string? Detail { get; init; }
 
-    /// <summary>一次批量动作涉及的格口数。</summary>
-    public int? SlotCount { get; init; }
-
     /// <summary>更正记录指向被更正的那条（B 档）；查询默认取最新有效版本。</summary>
     public long? CorrectsId { get; init; }
 }
@@ -409,7 +406,6 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
         ["flow_id"] = e.FlowId,
         ["node_id"] = e.NodeId,
         ["detail"] = e.Detail,
-        ["slot_count"] = e.SlotCount,
         ["corrects_id"] = e.CorrectsId,
     };
 }

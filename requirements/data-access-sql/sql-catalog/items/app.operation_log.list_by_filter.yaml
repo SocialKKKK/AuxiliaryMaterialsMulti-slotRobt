@@ -14,7 +14,7 @@ sql: |
          qty, remain_qty, station, result, message,
          mes_result, lock_result, error_info,
          door_open_ts, door_close_ts, is_cleared, is_uncommanded,
-         flow_id, node_id, detail, slot_count, corrects_id
+         flow_id, node_id, detail, corrects_id
   FROM app_operation_log
   WHERE id NOT IN (SELECT corrects_id FROM app_operation_log WHERE corrects_id IS NOT NULL)
     AND (:ts_from     IS NULL OR ts          >= :ts_from)
@@ -73,7 +73,6 @@ outputs:
   - flow_id
   - node_id
   - detail
-  - slot_count
   - corrects_id
 result_cardinality: 0..n
 note: 读取类条目，只增不删的记录表上使用，无副作用。

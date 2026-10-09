@@ -85,22 +85,19 @@ public class OperationLogExcelExportTests : IDisposable
 
         string Cell(string header) => sheet.Cell(2, OperationLogExcelExporter.Headers.ToList().IndexOf(header) + 1).GetString();
 
+        // 列集已于 2026-10-09 收敛为 16 列（见 OperationLogExcelExporter.Columns）
         Assert.Equal("2026-09-22 10:00:00", Cell("时间"));
-        Assert.Equal("1001", Cell("操作人工号"));
-        Assert.Equal("张三", Cell("操作人姓名"));
-        Assert.Equal("A班", Cell("操作人班组"));
-        Assert.Equal("OP", Cell("操作角色"));
-        Assert.Equal("OP 取出焊丝", Cell("动作类型"));      // 导出显示中文，而不是 action_type 的英文码
-        Assert.Equal("F-B02", Cell("格口编号"));
+        Assert.Equal("OP 取出焊丝（旧）", Cell("动作"));   // 导出显示中文；这个样例用的是历史码
+        Assert.Equal("张三(1001)", Cell("操作人"));        // 姓名与工号并成一列
+        Assert.Equal("OP", Cell("角色"));
+        Assert.Equal("F-B02", Cell("格口"));
         Assert.Equal("14Z1888-0888", Cell("焊丝批号"));
         Assert.Equal("φ42(MAXSOFT)", Cell("焊丝规格"));
         Assert.Equal("1QH029", Cell("机台号"));
-        Assert.Equal("P20260602-01", Cell("产品批次号"));
-        Assert.Equal("成功", Cell("操作结果"));
-        Assert.Equal("2026-09-22 10:00:05", Cell("格口开门时间"));
-        Assert.Equal("2026-09-22 10:00:40", Cell("格口关门时间"));
-        Assert.Equal("是", Cell("开门即清空"));
-        Assert.Equal("否", Cell("无指令开门"));
+        Assert.Equal("P20260602-01", Cell("工单号"));
+        Assert.Equal("2026-09-22 10:00:05", Cell("门开时间"));
+        Assert.Equal("2026-09-22 10:00:40", Cell("门关时间"));
+        Assert.Equal("成功", Cell("结果"));
     }
 
     /// <summary>数量必须是数值，否则在 Excel 里没法求和、排序也不对。</summary>
@@ -117,9 +114,9 @@ public class OperationLogExcelExportTests : IDisposable
         Assert.Equal(XLDataType.Number, sheet.Cell(2, qtyColumn).DataType);
         Assert.Equal(1d, sheet.Cell(2, qtyColumn).GetDouble());
 
-        // 该场景没有的值留白，不写空串
-        var stationColumn = OperationLogExcelExporter.Headers.ToList().IndexOf("作业站点") + 1;
-        Assert.True(sheet.Cell(2, stationColumn).IsEmpty());
+        // 该场景没有的值留白，不写空串（作业站点已从列集里删掉，用「失败原因」验）
+        var errColumn = OperationLogExcelExporter.Headers.ToList().IndexOf("失败原因") + 1;
+        Assert.True(sheet.Cell(2, errColumn).IsEmpty());
     }
 
     [Fact]

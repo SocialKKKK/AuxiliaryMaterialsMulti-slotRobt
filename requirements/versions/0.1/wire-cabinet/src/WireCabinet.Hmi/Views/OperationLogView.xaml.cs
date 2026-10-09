@@ -329,13 +329,10 @@ public partial class OperationLogView : UserControl
     };
 
     /// <summary>
-    /// 一次批量开门只有一条记录、没有单个格口号（口径优化 §2）。直接留空会看不出发生了什么，
-    /// 所以显示「N 格」；单格动作仍显示格口号。
+    /// 格口列：一格一条记录，直接显示格口号。
+    /// （口径收敛 2026-10-09 前，批量开门合并成一条时这里显示过「N 格」，现已不需要。）
     /// </summary>
-    private static string SlotText(OperationLogRecord r) =>
-        !string.IsNullOrWhiteSpace(r.SlotNo) ? r.SlotNo!
-        : r.SlotCount is > 1 ? $"{r.SlotCount} 格"
-        : "";
+    private static string SlotText(OperationLogRecord r) => r.SlotNo ?? "";
 
     /// <summary>
     /// 说明列：失败原因优先，否则用记录的说明文案。

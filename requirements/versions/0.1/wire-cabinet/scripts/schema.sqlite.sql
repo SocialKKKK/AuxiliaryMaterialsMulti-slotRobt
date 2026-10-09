@@ -62,8 +62,7 @@ CREATE TABLE IF NOT EXISTS app_operation_log (
     is_cleared     INTEGER NOT NULL DEFAULT 0,
     is_uncommanded INTEGER NOT NULL DEFAULT 0,
     -- 0.2 记录口径优化（2026-10-09）
-    detail         TEXT,     -- JSON：批量格口清单 / 被清批号 / 重复失败统计
-    slot_count     INTEGER,  -- 一次批量动作涉及的格口数
+    detail         TEXT,     -- JSON：自动路径重复失败统计（count / first_ts / last_ts）
     corrects_id    INTEGER   -- 更正记录指向被更正的那条（B 档，查询默认取最新有效版本）
 );
 
@@ -106,7 +105,6 @@ WHEN
     OR NEW.is_uncommanded IS NOT OLD.is_uncommanded
     OR NEW.flow_id        IS NOT OLD.flow_id
     OR NEW.node_id        IS NOT OLD.node_id
-    OR NEW.slot_count     IS NOT OLD.slot_count
     OR NEW.corrects_id    IS NOT OLD.corrects_id
     OR (OLD.door_open_ts  IS NOT NULL AND NEW.door_open_ts  IS NOT OLD.door_open_ts)
     OR (OLD.door_close_ts IS NOT NULL AND NEW.door_close_ts IS NOT OLD.door_close_ts)

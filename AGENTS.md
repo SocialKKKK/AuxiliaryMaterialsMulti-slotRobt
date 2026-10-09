@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test WireCabinet.sln                         # 期望 257 全通过（239 Core + 18 Windows HMI）
+dotnet test WireCabinet.sln                         # 期望 256 全通过（238 Core + 18 Windows HMI）
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -62,6 +62,7 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
 - **2026-10-09 记录口径优化已本地实施**（未部署）：构建 0 警告、257/257 通过。改动含 schema（+3 列 + 只增不删触发器）、FlowEngine、SlotDoorActionLog、MhDoorOnlyService、AgvActionLog、记录页/导出、`autotest/dbcheck.py pairs` 与 expect 断言、四份文档。
+  同日按需求方复核**再收敛**：动作类型收成 2×2（MH 存/取、OP 归还/领用）+ 维护试开 + 无指令开门，规则只有「取出一个一定记一条、存放一个一定记一条」；**批量开门改回逐格**（打开 53 格 = 53 条，推翻草案的「1 条 + 清单」）；导出列收成 **16 列**（删掉作业站点——填充率 0/9624，条款一并删；并补回之前两版都漏掉的「说明」列）。
   **部署时除了 DLL 还要同步 `requirements/data-access-sql/sql-catalog/items/`**（新增 2 个写条目；应用按 `CabinetPaths` 从 exe 向上找仓库根再读 catalog，缺了会报「缺少 SQL 条目」并静默降级）。库不用手工动（启动自动补列建触发器）。回滚只换 DLL 就够。已在**现场库副本**上预演：9624 条真数据无损、触发器生效、记录页正常。**现场复核要点与断言命令见 `requirements/versions/0.2/autotest/README.md` §0.1**（`dbcheck.py pairs` 必须带 `--since`，否则会把口径优化前 854 条历史「无来源关门」报成不一致）。
 - 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对；10 月 9 日已同步部署产品及正式/mock catalog，故障组合仍待现场复核；见 requirements/versions/0.2/代码审查-20261008.md。
 

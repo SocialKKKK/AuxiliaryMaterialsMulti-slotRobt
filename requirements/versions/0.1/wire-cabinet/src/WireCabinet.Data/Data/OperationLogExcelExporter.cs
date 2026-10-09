@@ -27,36 +27,41 @@ public sealed class OperationLogExcelExporter
 
     public const string FileExtension = ".xlsx";
 
-    /// <summary>列顺序与表头，按 §3.3 的字段顺序。</summary>
+    /// <summary>
+    /// 列顺序与表头（2026-10-09 按需求方确认收敛为 16 列）。
+    ///
+    /// 收敛原则：只留"存取记录"该回答的东西 —— 谁、什么时候、对哪个格口、取出还是存入、
+    /// 哪批料、成没成。删掉了作业站点（填充率 0%）、格口数 / 明细（批量改逐格后不再需要）、
+    /// MES 调用结果 / 格口开锁结果（与「结果」重复）、开门即清空 / 无指令开门
+    /// （已由动作类型表达）、流程 / 节点（排障用，留库即可）；操作人工号并入「操作人」。
+    /// </summary>
     private static readonly (string Header, Func<OperationLogRecord, object?> Value)[] Columns =
     [
         ("时间", r => r.Ts),
-        ("操作人工号", r => r.OperatorId),
-        ("操作人姓名", r => r.OperatorName),
-        ("操作人班组", r => r.OperatorTeam),
-        ("操作角色", r => r.OperatorRole),
-        ("动作类型", r => OperationLogActionTypes.Label(r.ActionType)),
-        ("格口编号", r => r.SlotNo),
+        ("动作", r => OperationLogActionTypes.Label(r.ActionType)),
+        ("操作人", Operator),
+        ("角色", r => r.OperatorRole),
+        ("格口", r => r.SlotNo),
         ("焊丝批号", r => r.LotNo),
         ("焊丝规格", r => r.WireSpec),
-        ("机台号", r => r.EqpNo),
-        ("产品批次号", r => r.ProductLotNo),
         ("数量", r => r.Qty),
         ("剩余数量", r => r.RemainQty),
-        ("作业站点", r => r.Station),
-        ("操作结果", r => r.Result),
+        ("机台号", r => r.EqpNo),
+        ("工单号", r => r.ProductLotNo),
+        ("门开时间", r => r.DoorOpenTs),
+        ("门关时间", r => r.DoorCloseTs),
+        ("结果", r => r.Result),
         ("失败原因", r => r.ErrorInfo),
-        ("MES 调用结果", r => r.MesResult),
-        ("格口开锁结果", r => r.LockResult),
-        ("格口开门时间", r => r.DoorOpenTs),
-        ("格口关门时间", r => r.DoorCloseTs),
-        ("开门即清空", r => YesNo(r.IsCleared)),
-        ("无指令开门", r => YesNo(r.IsUncommanded)),
-        ("格口数", r => r.SlotCount),
-        ("明细", r => r.Detail),
-        ("流程", r => r.FlowId),
-        ("节点", r => r.NodeId),
+        ("说明", r => r.Message),
     ];
+
+    /// <summary>操作人显示成「姓名(工号)」；两者都空时留空，只有一个就只显示那个。</summary>
+    private static object? Operator(OperationLogRecord r)
+    {
+        if (string.IsNullOrWhiteSpace(r.OperatorName)) return r.OperatorId;
+        if (string.IsNullOrWhiteSpace(r.OperatorId)) return r.OperatorName;
+        return $"{r.OperatorName}({r.OperatorId})";
+    }
 
     /// <summary>列数，供界面预览表头或测试核对。</summary>
     public static int ColumnCount => Columns.Length;

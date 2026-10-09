@@ -116,9 +116,6 @@ public sealed record OperationLogRecord
     /// <summary>JSON 明细：批量格口清单 / 被清批号 / 重复失败统计。</summary>
     public string? Detail { get; init; }
 
-    /// <summary>一次批量动作涉及的格口数。</summary>
-    public int? SlotCount { get; init; }
-
     /// <summary>更正记录指向被更正的那条；查询默认已排除被更正的行。</summary>
     public long? CorrectsId { get; init; }
 
@@ -155,7 +152,6 @@ public sealed record OperationLogRecord
         FlowId = Text(row, "flow_id"),
         NodeId = Text(row, "node_id"),
         Detail = Text(row, "detail"),
-        SlotCount = Int(row, "slot_count"),
         CorrectsId = Int(row, "corrects_id"),
     };
 

@@ -135,20 +135,18 @@ public class OperationLogBackfillTests : IDisposable
     }
 
     [Fact]
-    public void Insert_WritesDetailSlotCountAndCorrectsId()
+    public void Insert_WritesDetailAndCorrectsId()
     {
         var (db, sink) = NewSink();
         sink.TryWrite(new OperationLogEntry
         {
             ActionType = OperationLogActionTypes.MhOpenSlotsBatch,
             Result = "成功",
-            Detail = """{"slots":["F-A01","F-A02"],"cleared_lots":["L1"]}""",
-            SlotCount = 2,
+            Detail = """{"count":9,"first_ts":"2026-10-09 15:07:57","last_ts":"2026-10-09 15:08:59"}""",
         });
 
         var row = Assert.Single(Rows(db));
-        Assert.Equal(2L, Convert.ToInt64(row["slot_count"]));
-        Assert.Contains("cleared_lots", row["detail"]?.ToString(), StringComparison.Ordinal);
+        Assert.Contains("\"count\":9", row["detail"]?.ToString(), StringComparison.Ordinal);
         Assert.Null(row["corrects_id"]);
     }
 }

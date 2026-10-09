@@ -35,7 +35,6 @@ public static class OperationLogSchema
         ("is_cleared",     "INTEGER NOT NULL DEFAULT 0"),
         ("is_uncommanded", "INTEGER NOT NULL DEFAULT 0"),
         ("detail",         "TEXT"),
-        ("slot_count",     "INTEGER"),
         ("corrects_id",    "INTEGER"),
     };
 
@@ -110,7 +109,6 @@ public static class OperationLogSchema
             OR NEW.is_uncommanded IS NOT OLD.is_uncommanded
             OR NEW.flow_id        IS NOT OLD.flow_id
             OR NEW.node_id        IS NOT OLD.node_id
-            OR NEW.slot_count     IS NOT OLD.slot_count
             OR NEW.corrects_id    IS NOT OLD.corrects_id
             OR (OLD.door_open_ts  IS NOT NULL AND NEW.door_open_ts  IS NOT OLD.door_open_ts)
             OR (OLD.door_close_ts IS NOT NULL AND NEW.door_close_ts IS NOT OLD.door_close_ts)

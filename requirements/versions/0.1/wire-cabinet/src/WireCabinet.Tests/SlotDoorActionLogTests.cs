@@ -42,10 +42,10 @@ public class SlotDoorActionLogTests : IDisposable
         var (db, _, log) = NewLog();
 
         Assert.True(log.RecordOpened(
-            SlotDoorActionLog.MhOpenSlot, "F-B02", DoorOperator.Mh("1001", "张三", "A班")));
+            SlotDoorActionLog.MhTakeWire, "F-B02", DoorOperator.Mh("1001", "张三", "A班")));
 
         var row = Assert.Single(Rows(db));
-        Assert.Equal("mh_open_slot", row["action_type"]);
+        Assert.Equal("mh_take_wire", row["action_type"]);
         Assert.Equal("F-B02", row["slot_no"]);
         Assert.Equal("成功", row["result"]);
         Assert.Equal("MH", row["operator_role"]);
@@ -54,7 +54,6 @@ public class SlotDoorActionLogTests : IDisposable
         Assert.Equal("A班", row["operator_team"]);
         Assert.False(string.IsNullOrWhiteSpace(row["door_open_ts"]?.ToString()));
         Assert.Null(row["door_close_ts"]);
-        Assert.Null(row["slot_count"]);
     }
 
     /// <summary>
@@ -68,61 +67,52 @@ public class SlotDoorActionLogTests : IDisposable
         const string openedAt = "2026-09-22 09:19:58";
         const string closedAt = "2026-09-22 09:20:31";
         var op = DoorOperator.Mh("1001", "张三", "A班");
-        Assert.True(log.RecordOpened(SlotDoorActionLog.MhOpenSlot, "F-B02", op, openedAt));
-        Assert.True(log.RecordClosed(SlotDoorActionLog.MhOpenSlot, openedAt, closedAt));
+        Assert.True(log.RecordOpened(SlotDoorActionLog.MhTakeWire, "F-B02", op, openedAt));
+        Assert.True(log.RecordClosed(SlotDoorActionLog.MhTakeWire, openedAt, closedAt));
 
         var row = Assert.Single(Rows(db));
-        Assert.Equal("mh_open_slot", row["action_type"]);
+        Assert.Equal("mh_take_wire", row["action_type"]);
         Assert.Equal(openedAt, row["door_open_ts"]);
         Assert.Equal(closedAt, row["door_close_ts"]);
         Assert.Equal("1001", row["operator_id"]);
     }
 
-    /// <summary>§ 矩阵第 6 项（口径优化后）：一次批量开门 = **一条**，格口清单与数量挂在字段上。</summary>
+    /// <summary>
+    /// § 矩阵第 6 项（口径收敛 2026-10-09）：批量开门**逐格一条**，打开 N 格就是 N 条
+    /// 「MH 取出旧焊丝」——一次批量在语义上就是"逐格取走"，而"取出一个一定记一条"。
+    /// </summary>
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
     [InlineData(54)]
-    public void BatchOpen_WritesOneRecordCarryingSlotList(int count)
+    public void BatchOpen_WritesOneRecordPerSlot(int count)
     {
         var (db, _, log) = NewLog();
-        var slots = Enumerable.Range(1, count).Select(i => ((long)i, $"F-{i:00}")).ToList();
 
-        Assert.True(log.RecordBatchOpened(SlotDoorActionLog.MhOpenSlotsBatch, slots, DoorOperator.Mh()));
+        for (var i = 1; i <= count; i++)
+            Assert.True(log.RecordOpened(SlotDoorActionLog.MhTakeWire, $"F-{i:00}", DoorOperator.Mh()));
 
-        var row = Assert.Single(Rows(db));
-        Assert.Equal("mh_open_slots_batch", row["action_type"]);
-        Assert.Equal(count, Convert.ToInt32(row["slot_count"]));
-        var detail = row["detail"]?.ToString() ?? "";
-        Assert.Contains("slots", detail, StringComparison.Ordinal);
-        foreach (var (_, slotNo) in slots)
-            Assert.Contains(slotNo, detail, StringComparison.Ordinal);
-        Assert.False(string.IsNullOrWhiteSpace(row["door_open_ts"]?.ToString()));
+        var rows = Rows(db);
+        Assert.Equal(count, rows.Count);
+        Assert.All(rows, r => Assert.Equal("mh_take_wire", r["action_type"]));
+        // 每格一条，格口号与开门口一一对应
+        Assert.Equal(
+            Enumerable.Range(1, count).Select(i => $"F-{i:00}").ToList(),
+            rows.Select(r => r["slot_no"]?.ToString() ?? "").ToList());
     }
 
-    /// <summary>空批量不写记录——否则一次「没有匹配格口」会凭空多一条。</summary>
+    /// <summary>空格口也记一条（系统分不清"取走了"还是"本来就空"），只是批号为空、不置 is_cleared。</summary>
     [Fact]
-    public void BatchOpen_EmptySet_WritesNothing()
+    public void OpenWithoutClearedLot_RecordsTheSlotWithEmptyLot()
     {
         var (db, _, log) = NewLog();
 
-        Assert.False(log.RecordBatchOpened(SlotDoorActionLog.MhOpenSlotsBatch, [], DoorOperator.Mh()));
-
-        Assert.Empty(Rows(db));
-    }
-
-    /// <summary>「开门即清空」降级为字段：被清批号记在 detail 上，不再单独成条。</summary>
-    [Fact]
-    public void BatchOpen_WithClearedLots_RecordsThemAsFields()
-    {
-        var (db, _, log) = NewLog();
-
-        log.RecordBatchOpened(SlotDoorActionLog.MhOpenSlotsBatch, [(1, "F-01"), (2, "F-02")],
-            DoorOperator.Mh(), clearedLots: ["HKS7LA-0005"]);
+        Assert.True(log.RecordOpened(SlotDoorActionLog.MhTakeWire, "F-A01", DoorOperator.Mh()));
 
         var row = Assert.Single(Rows(db));
-        Assert.Equal(1L, Convert.ToInt64(row["is_cleared"]));
-        Assert.Contains("HKS7LA-0005", row["detail"]?.ToString(), StringComparison.Ordinal);
+        Assert.Null(row["lot_no"]);
+        Assert.Equal(0L, Convert.ToInt64(row["is_cleared"]));
+        Assert.Contains("取出旧焊丝", row["message"]?.ToString(), StringComparison.Ordinal);
     }
 
     /// <summary>§ 矩阵第 9 项：开锁失败也留一条，且带原因。</summary>
@@ -132,7 +122,7 @@ public class SlotDoorActionLogTests : IDisposable
         var (db, _, log) = NewLog();
 
         Assert.True(log.RecordFailed(
-            SlotDoorActionLog.MhOpenSlot, "F-B02", "格口开锁失败（已禁用、硬件无响应或格口不存在）。", DoorOperator.Mh()));
+            SlotDoorActionLog.MhTakeWire, "F-B02", "格口开锁失败（已禁用、硬件无响应或格口不存在）。", DoorOperator.Mh()));
 
         var row = Assert.Single(Rows(db));
         Assert.Equal("失败", row["result"]);
@@ -161,7 +151,7 @@ public class SlotDoorActionLogTests : IDisposable
         var (db, _, log) = NewLog();
 
         for (var i = 0; i < 3; i++)
-            log.RecordOpened(SlotDoorActionLog.MhOpenSlot, "F-B02", DoorOperator.Mh("1001", "张三", "A班"));
+            log.RecordOpened(SlotDoorActionLog.MhTakeWire, "F-B02", DoorOperator.Mh("1001", "张三", "A班"));
 
         Assert.Equal(3, Rows(db).Count);
         Assert.All(Rows(db), r => Assert.Equal("F-B02", r["slot_no"]));
@@ -173,8 +163,8 @@ public class SlotDoorActionLogTests : IDisposable
     {
         var log = new SlotDoorActionLog(null);
 
-        Assert.False(log.RecordOpened(SlotDoorActionLog.MhOpenSlot, "F-B02", DoorOperator.Mh()));
-        Assert.False(log.RecordFailed(SlotDoorActionLog.MhOpenSlot, "F-B02", "x", DoorOperator.Mh()));
+        Assert.False(log.RecordOpened(SlotDoorActionLog.MhTakeWire, "F-B02", DoorOperator.Mh()));
+        Assert.False(log.RecordFailed(SlotDoorActionLog.MhTakeWire, "F-B02", "x", DoorOperator.Mh()));
     }
 
     /// <summary>记录写入失败（库坏了）不得把异常抛回开门链路。</summary>
@@ -184,7 +174,7 @@ public class SlotDoorActionLogTests : IDisposable
         var (db, _, log) = NewLog();
         db.Execute("ALTER TABLE app_operation_log RENAME TO app_operation_log_broken;", new Dictionary<string, object?>());
 
-        Assert.False(log.RecordOpened(SlotDoorActionLog.MhOpenSlot, "F-B02", DoorOperator.Mh()));
-        Assert.False(log.RecordFailed(SlotDoorActionLog.MhOpenSlot, "F-B02", "x", DoorOperator.Mh()));
+        Assert.False(log.RecordOpened(SlotDoorActionLog.MhTakeWire, "F-B02", DoorOperator.Mh()));
+        Assert.False(log.RecordFailed(SlotDoorActionLog.MhTakeWire, "F-B02", "x", DoorOperator.Mh()));
     }
 }

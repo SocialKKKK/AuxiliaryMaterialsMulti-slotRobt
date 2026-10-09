@@ -35,6 +35,60 @@ public class AgvActionLogTests : IDisposable
     private static List<Dictionary<string, object?>> Rows(SqliteDb db) =>
         db.Query("SELECT * FROM app_operation_log ORDER BY id;", new Dictionary<string, object?>()).Rows;
 
+    // ---------- 口径优化 §2 口径③：自动路径连续失败合并 ----------
+
+    /// <summary>
+    /// 自动返航同一原因连续失败 9 次 → **1 条**，次数与首末时刻在 detail 上
+    /// （现场 15:07–15:08 每 3 秒一条的记录洪水）。
+    /// </summary>
+    [Fact]
+    public void AutoPath_RepeatedSameCauseFailures_MergeIntoOneRecord()
+    {
+        var (db, log) = NewLog();
+
+        for (var i = 0; i < 9; i++)
+            Assert.True(log.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", "RCS 操作失败：目的地站点不存在"));
+
+        var row = Assert.Single(Rows(db));
+        Assert.Equal("agv_move", row["action_type"]);
+        Assert.Equal("失败", row["result"]);
+        Assert.Equal("RCS 操作失败：目的地站点不存在", row["error_info"]);
+        var detail = row["detail"]?.ToString() ?? "";
+        Assert.Contains("\"count\":9", detail, StringComparison.Ordinal);
+        Assert.Contains("first_ts", detail, StringComparison.Ordinal);
+        Assert.Contains("last_ts", detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>原因变了就是另一回事，各记一条，不能算进同一次合并。</summary>
+    [Fact]
+    public void AutoPath_DifferentCause_StartsANewRecord()
+    {
+        var (db, log) = NewLog();
+
+        log.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", "原因A");
+        log.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", "原因B");
+
+        var rows = Rows(db);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("原因A", rows[0]["error_info"]);
+        Assert.Equal("原因B", rows[1]["error_info"]);
+    }
+
+    /// <summary>成功即结束本轮合并：成功之后再失败，重新起一条。</summary>
+    [Fact]
+    public void AutoPath_AfterSuccess_StartsANewRecord()
+    {
+        var (db, log) = NewLog();
+
+        log.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", "原因A");
+        log.EndAutoFailureStreak();
+        log.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", "原因A");
+
+        var rows = Rows(db);
+        Assert.Equal(2, rows.Count);
+        Assert.Contains("\"count\":1", rows[1]["detail"]?.ToString(), StringComparison.Ordinal);
+    }
+
     // ---------- C5：静置不产生记录 ----------
 
     /// <summary>静置即 ExecutedAction 为 null；连跑一小时的轮询轮数也不该落一条。</summary>

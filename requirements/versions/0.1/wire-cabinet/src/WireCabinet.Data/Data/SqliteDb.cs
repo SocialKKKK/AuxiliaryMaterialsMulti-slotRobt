@@ -98,11 +98,32 @@ public sealed class SqliteDb
     private static IEnumerable<string> SplitStatements(string script)
     {
         var sb = new System.Text.StringBuilder();
+        var inTrigger = false;
         foreach (var line in script.Split('\n', StringSplitOptions.None))
         {
             var trimmed = line.Trim();
             if (trimmed.StartsWith("--", StringComparison.Ordinal)) continue;
             sb.AppendLine(line);
+
+            // 触发器体内自带 ';'（RAISE(...) 与 END;），按行分割会把一条语句切碎成
+            // 语法不完整的片段。从 CREATE TRIGGER 起累积，直到 END; 才算一条完整语句。
+            if (!inTrigger && trimmed.StartsWith("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase))
+            {
+                inTrigger = true;
+                continue;
+            }
+
+            if (inTrigger)
+            {
+                if (trimmed.EndsWith("END;", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return sb.ToString().Trim();
+                    sb.Clear();
+                    inTrigger = false;
+                }
+                continue;
+            }
+
             if (trimmed.EndsWith(";", StringComparison.Ordinal))
             {
                 yield return sb.ToString().Trim();

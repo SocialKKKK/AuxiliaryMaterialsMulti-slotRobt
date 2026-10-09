@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test WireCabinet.sln                         # 期望 234 全通过（218 Core + 16 Windows HMI）
+dotnet test WireCabinet.sln                         # 期望 257 全通过（239 Core + 18 Windows HMI）
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -42,15 +42,27 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 ## 当前状态
 
 - `main` 已含 0.2 实现；10 月 8 日控车与审查修复于 **10 月 9 日 14:08 原地部署柜体机 `.10`**，Release 234/234、构建 0 警告。实机 IDLE 与用户手动回充后的 CHARGING 均恢复发车按钮；实际离站、90% 返航与审查故障场景仍待现场验收。证据见 `verification/2026-10-09/部署复核.md`。
-
-
 - 覆盖矩阵 12 项全部落地。**已实机核对**（截图或查库）：记录页渲染、按批号追溯、
   批量开门的记录条数、待补偿人工重试、MH 操作人姓名解析、时区显示、静置不刷记录。
-  9 月 29 日已现场验证开门即清空、自动返航与 MES 真库；维护试开、物理无指令开门及控车其余命令仍待现场验证。
-- **现场联调未做**；MES Oracle 真库路径从未执行过（全部验证基于 SQLite mock）—— 这是最大风险。共享 `appsettings.json` 不含现场凭据；部署须保留现场 `appsettings.Local.json`。
+  **仍未覆盖**：维护试开（试开此格）。
+- **现场联调已完成（2026-09-29，柜体机 `.10`）**：0.2 已部署在上面并跑通一整轮真实作业 ——
+  MH 存料 ×3、开门即清空 ×3、**操作员存废取新**（唯一改过的流程定义，零报错）、充满电自动返航、
+  记录页查询/按批号追溯/导出落盘（9040 B + `export_operation_log` 留痕）。
+  **MES Oracle 真库读与写都实跑过**：读 = 对账漂移 0 条；写 = 柜子标记 47→50→49，与格口状态逐条对应，待补偿全程 0。
+  仍未覆盖：故障注入/待补偿人工重试、物理无指令开门、导出文件人工用 Excel 打开。
+- **部署方式是原地覆盖**：把 Release 产物盖进 `...\bin\Release\net8.0-windows\`，并同步 `flows/` + `sql-catalog/`，不新建目录。
+  桌面 6 个 HMI 快捷方式与计划任务 `WireCabinet-StartHmi` **都指向这同一路径**，所以从桌面重启仍是 0.2；
+  但全盘还留着 6 份 7 月旧副本（`bin\Release\...\publish\`、`win-x64\`、`bin\Debug\`、`.build-check\`、
+  `桌面\新厂前线物料二号260702\`）—— **只有手工进那些目录双击才会启到旧版**。
+  一眼识别当前版本：顶栏 **6 个页签**（末位「存取记录」）= 0.2，**5 个** = 旧版。
+  本次回滚：管理员跑 `powershell -ExecutionPolicy Bypass -File C:\autotest\deploy-rollback-20261009.ps1`（`-CheckOnly` 已通过），恢复升级前 9 月版；旧 `deploy-rollback.cmd` 恢复 7 月版。库备份在 `data\backup\upgrade-20261009-140134\`。
+- 仓库共享 `appsettings.json` 不含现场凭据；**10 月 9 日升级已将现场原共享配置合并迁入 Local，并备份两个原文件、逐项确认有效配置未变**；后续部署须保留 Local，否则连接与门禁会失效。
+- 现场自动化测试资产（`requirements/versions/0.2/autotest/`）**已在本机 mock 验通**：记录页场景 45 步（含**真导出落盘**）、存料 18 步、开门 25 步、冒烟 24 步全过；**记录通道也验到了**——本地库由应用写下 `export_operation_log` 留痕与 `mh_open_slots_batch 失败/开锁失败：硬件未响应。`。2026-09-28 已通过 SSH + 计划任务桥在柜体机跑通只读截图/控件树。
+  原先「只能现场验」的几项（操作员存废取新、存料成功路径、真实控车）**已于 2026-09-29 现场实跑**。现场结果与避坑表见 `autotest/README.md` §8。注意柜体机上**没有 python、也没有 git，只有 .NET 8 运行时** —— `dbcheck.py` 要拉回本机跑，构建也只能在本机做再推包。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
-- 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已本地修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对，现场待部署；见 requirements/versions/0.2/代码审查-20261008.md。
+- **2026-10-09 记录口径优化已本地实施**（未部署）：构建 0 警告、257/257 通过。改动含 schema（+3 列 + 只增不删触发器）、FlowEngine、SlotDoorActionLog、MhDoorOnlyService、AgvActionLog、记录页/导出、`autotest/dbcheck.py pairs` 与 expect 断言、四份文档。**现场待部署 + 待按新口径复核**（一次存料 1 条、批量开门 1 条、OP 存废取新 2 条、`is_uncommanded` 不出现）。
+- 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对；10 月 9 日已同步部署产品及正式/mock catalog，故障组合仍待现场复核；见 requirements/versions/0.2/代码审查-20261008.md。
 
 ## 未决 / 已知限制
 
@@ -58,9 +70,12 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 |---|---|
 | MH 存料的 `eqp_no` 恒为空 | 未决：存料流程无此信息，需确认是否认可「该场景不适用」 |
 | 查看/导出留痕无操作人 | 已知限制：记录页门禁只有密码、无工号（§2） |
-| 导出 Excel 的落盘 | 数据层有 9 个用例覆盖，界面只差人工点一次 |
+| **MH 存料的记录也没有操作人** | 未决（2026-09-29 现场发现）：MH 流程无操作人节点、§1.3 不许改流程，只能靠界面那个**可选**工号框；现场没填就留空（OP 流程则正常记到「谭磊/11044242」）。建议改成存料前必填，否则追溯链缺「谁」这一维 |
+| **「无指令开门」误报（根因已查明，本地已修）** | 2026-10-09 现场复现 + 定位：门态巡检把「库已记 open、但开锁脉冲尚未生效」的窗口当成"已关门"，回写库并补一条无来源关门记录，下一秒 DI 真释锁 → 反向判成计划外开门；一次标准 OP 存废取新每个格口各误报一次。已本地修两处：`DoorStateReconciler` 必须**真正读到过释锁**才判已关（另留 3 轮兜底），`MhDoorOnlyService` 不再补无来源关门（消除同一开门的重复关门）。**现场待部署**，推完开一格再关即可验证 `is_uncommanded` 不再出现 |
+| **记录口径优化（**已本地实施，现场待部署**）** | 2026-10-09 现场量化：当天 481 条里 **84% 是过程/推导记录**，平均 1 次人的动作 ≈ 12 条。已按需求方确认落地全量：一次人的动作一条 + 门/清空挂字段；**领用与取出合并**（决议 1 变更，验收清单原「合并=未通过」已删）；批量开门 1 条 + 格口清单；自动路径连续失败合并；「只增不删」收窄为「业务事实不可改写」（仅放行补 NULL 门时刻、更新 `detail`，库层触发器兜底）。条数：存料 3→1、批量开门 159→1、OP 存废取新 7→2、自动返航 9 次→1 条。新增 3 列 `detail`/`slot_count`/`corrects_id` + 2 个写 catalog 条目。**改动面很大（FlowEngine 门事件抑制与回填、SlotDoorActionLog 与 MhDoorOnlyService 重写、AgvActionLog 合并）**，详见 `requirements/versions/0.2/记录口径优化-20261009.md` §0（含四处有意偏差）与 `变更说明.md` §2.7/§5.7 |
 | **订单门与 RCS 订单状态可能不同步** | 10 月 8 日已修，10 月 9 日已部署：兼容 `done_time`，取消后等 RCS 释放，详情失败显示原因且保留联锁；不因车辆订单为空强清队列。实际取消/释放仍待现场复核 |
 | **充电态无法手动离站/自动返航** | 10 月 9 日已部署，CHARGING 发车按钮可用；14:31 满电自动返航报“目的地站点不存在”，旧配置物料间 596 已不在 RCS 地图 22。正确物料间目标/移动放行待用户确认；实际成功离站与返航未验收，阈值仍 30%/90%，见 `verification/2026-10-09/部署复核.md` |
+| 导出 Excel 的落盘 | 2026-09-29 现场已验证：`oplog-real.xlsx` 9040 B 落盘 + `export_operation_log` 留痕。**只剩人工用 Excel 打开确认一次** |
 | 归档/备份的周期与存放 | 做法已定，参数待现场填实（`运维说明-归档与备份.md`） |
 | 两套 FlowEngine | 产品一份、`validation/wire-flow-lab` 一份 fork（已漂移），长期需收拢 |
 
@@ -70,8 +85,38 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 - 提交习惯：**每个提交独立可构建、可过测试**；界面类改动要实机截图核对后再提交。
 - 涉及**真实硬件/车辆**的动作（如 `--execute` 控车）必须先与用户确认 —— 参考
   `AgvDispatch.Sample` 的约定：**默认干跑，写接口需显式 `--execute`**。
+- AGV 两处容易误判（2026-09-29 读码 + 现场实证澄清）：**①「定位中」不参与接单判定** ——
+  界面那个"定位状态"只是把 RCS 的 `locationState` 翻成中文给人看，接单与否看的是 `AgvOperationEvaluator`：
+  无进行中订单、在线、`sys_state` ∉ {`CHARGING`,`ERROR`}、且 `sys_state=IDLE` + `move∈{AT_FINISHED,AT_NA}` +
+  `proc` 空闲 + **格口全关**。现场车全程显示"定位中"照样走完自动返航。**②现场 9 月版充电态发车按钮禁用**；
+  10 月 8 日本地修复允许安全离站，并取消已确认目的地/动作的本车充电单后等待释放；BMS 未提供订单 ID 的场景仍需现场核对。
+  **设计要求任一格口开着、门态未知或正在开锁都拒绝派车；10 月 8 日已修复实际 DI 读失败误判全关，禁用但接线的格口也检查 DI**。
 
-10 月 8 日本地控车修复：充电态允许安全离站，已识别的本车充电订单先请求取消并等待 RCS 释放；在线、急停、移动/进程就绪、门全关和开锁联锁仍生效。阈值未改，现场尚未部署；BMS 无可识别订单时需现场取证。
+## 现场自动化测试（AI 能自主做到哪一步）
+
+资产在 `requirements/versions/0.2/autotest/`：`ui/uidriver.ps1`（步骤驱动 UIA + 截图）、
+`dbcheck.py`（查 `app.db` 断言记录条数/门事件配对/待补偿/UTC 口径）、`README.md` 是现场 runbook。
+**优先级：能用数据与日志判定的就不点界面。** 动作分级沿用 `--execute` 的约定：
+
+- **完全自主**：构建、跑用例、读日志、取库断言、柜体 DI/DO 只读、RCS 干跑、查 MES 只读、截图。
+- **需人工放行**：部署到柜体机（可回滚）、**真实开门**、控车/回充、**写 MES 真库**、故障注入改库名。
+- **必须人在现场**：物理碰撞风险、门前有人、上下料、清场、急停。
+
+**现场凭据（2026-09-28 现场确认）**：RCS `admin` / `密码见本机 _agv-probe/snap/site-appsettings.json（不入库）`（仓库里原先的 `admin/admin` 已失效）；
+车载路由 `172.19.162.55` = `admin` / `admin`（隧道 `tunnel.sh` 用它，`_agv-probe/askpass.sh`）。
+产品与 `AgvDispatch.Sample` 共用同一个 SDK，现场 `.10` 的 `appsettings.Local.json` 也要用 RCS 新密码，
+否则报的是误导性的 `Login succeeded but token not found in response`（SDK 只看 HTTP 状态码、不看 body 的 `code`）。
+
+**柜体机 `.10`（192.168.71.10）**：SSH 走车载路由隧道（`_agv-probe/tunnel.sh`，`admin@172.19.162.55`）。
+截至 2026-09-28：`sshd` 已设为自动启动、公钥已安装，`ssh agv-cabinet` 经本机 `127.0.0.1:122` 隧道可登录。
+开机自动连接**已移除**（2026-09-29 删掉登录任务 `AGV-Cabinet-AutoConnect`）：登录任务 + `-WindowStyle Hidden`
++ Windows Terminal 当默认终端 = 隐藏失效，每次开机弹一个空白窗。原 XML 备份在
+`_agv-probe\AGV-Cabinet-AutoConnect.task.xml`，要恢复请改用 `-LogonType S4U` 在后台会话跑。
+**到现场由用户告知后再拉隧道**（`connect.sh`），不要自建常驻后台脚本。
+
+**下次到现场（速查）**：连车间网 Wi-Fi（`172.19.162.x`）→ **保留 Clash TUN，路由排除 `172.19.162.0/24` 与 `192.168.71.0/24`**（2026-10-09 实测 SSH/四模块正常；关 TUN 会使 Codex 重连）→ `cd /d/code/_agv-probe && ./connect.sh`
+（自检逐跳；`.10` 连不上时它会把修复用的 PowerShell 打印出来）→ `ssh agv-cabinet`。
+五步全文见 `requirements/versions/0.2/autotest/README.md` §0。
 
 ## 收尾时同步文档（常驻要求）
 

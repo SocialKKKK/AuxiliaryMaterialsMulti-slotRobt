@@ -52,6 +52,8 @@ public sealed class OperationLogExcelExporter
         ("格口关门时间", r => r.DoorCloseTs),
         ("开门即清空", r => YesNo(r.IsCleared)),
         ("无指令开门", r => YesNo(r.IsUncommanded)),
+        ("格口数", r => r.SlotCount),
+        ("明细", r => r.Detail),
         ("流程", r => r.FlowId),
         ("节点", r => r.NodeId),
     ];

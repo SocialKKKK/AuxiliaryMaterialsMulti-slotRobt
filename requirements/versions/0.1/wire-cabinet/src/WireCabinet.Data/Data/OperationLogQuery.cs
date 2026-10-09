@@ -112,6 +112,16 @@ public sealed record OperationLogRecord
     public string? FlowId { get; init; }
     public string? NodeId { get; init; }
 
+    // 记录口径优化（2026-10-09）：一次人的动作一条，过程挂字段
+    /// <summary>JSON 明细：批量格口清单 / 被清批号 / 重复失败统计。</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>一次批量动作涉及的格口数。</summary>
+    public int? SlotCount { get; init; }
+
+    /// <summary>更正记录指向被更正的那条；查询默认已排除被更正的行。</summary>
+    public long? CorrectsId { get; init; }
+
     /// <summary>
     /// 从库行构造读模型。时间列（ts / 门开 / 关门）在库里是 UTC，这里换算成
     /// <paramref name="zone"/> 的本地时间——界面与导出的都是给人看的值。
@@ -144,10 +154,20 @@ public sealed record OperationLogRecord
         IsUncommanded = Flag(row, "is_uncommanded"),
         FlowId = Text(row, "flow_id"),
         NodeId = Text(row, "node_id"),
+        Detail = Text(row, "detail"),
+        SlotCount = Int(row, "slot_count"),
+        CorrectsId = Int(row, "corrects_id"),
     };
 
     private static string? Text(Dictionary<string, object?> row, string column) =>
         row.GetValueOrDefault(column)?.ToString();
+
+    private static int? Int(Dictionary<string, object?> row, string column) =>
+        row.GetValueOrDefault(column) is { } v && v is not DBNull
+        && int.TryParse(v.ToString(), System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
 
     private static double? Number(Dictionary<string, object?> row, string column) =>
         row.GetValueOrDefault(column) is { } v && v is not DBNull

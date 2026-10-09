@@ -12,9 +12,10 @@ sql: |
          qty, remain_qty, station, result, message,
          mes_result, lock_result, error_info,
          door_open_ts, door_close_ts, is_cleared, is_uncommanded,
-         flow_id, node_id
+         flow_id, node_id, detail, slot_count, corrects_id
   FROM app_operation_log
-  WHERE (:ts_from     IS NULL OR ts          >= :ts_from)
+  WHERE id NOT IN (SELECT corrects_id FROM app_operation_log WHERE corrects_id IS NOT NULL)
+    AND (:ts_from     IS NULL OR ts          >= :ts_from)
     AND (:ts_to       IS NULL OR ts          <= :ts_to)
     AND (:lot_no      IS NULL OR lot_no       = :lot_no)
     AND (:slot_no     IS NULL OR slot_no      = :slot_no)
@@ -64,5 +65,8 @@ outputs:
   - is_uncommanded
   - flow_id
   - node_id
+  - detail
+  - slot_count
+  - corrects_id
 result_cardinality: 0..n
 note: 导出行为本身也要留痕（写入一条 action_type 区分查看/导出的记录），由调用方负责。

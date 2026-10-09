@@ -114,7 +114,7 @@ public class OperationLogMhLoadTests : IDisposable
     }
 
     [Fact]
-    public void MhLoad_Success_WritesExactlyOneRecordWithExpectedFields()
+    public void MhLoad_Success_WritesOneRecordCarryingDoorTimestamps()
     {
         var (db, engine) = NewEngine();
 
@@ -122,19 +122,15 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal("success", last.Outcome);
         Assert.Equal("endSuccess", last.NodeId);
 
+        // 口径优化（2026-10-09）：一次存料 = 1 条；开门/关门降级为这条上的两个时刻，
+        // 不再各写一条 door_open / door_close（原先是 3 条）。
         var rows = db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows;
-        Assert.Equal(3, rows.Count); // 业务记录一条，开/关门事件各一条
-        Assert.Equal(new[] { "door_open", "door_close", "mh_load_available_wire" },
-            rows.Select(r => r["action_type"]?.ToString()).ToArray());
-        Assert.Equal(rows[0]["door_open_ts"], rows[1]["door_open_ts"]);
-        Assert.Null(rows[0]["door_close_ts"]);
-        Assert.False(string.IsNullOrWhiteSpace(rows[1]["door_close_ts"]?.ToString()));
+        var row = Assert.Single(rows);
 
         // 格位号应与流程实际选中的格口一致（不硬编码，避免依赖 seed 顺序）
         var chosenSlotNo = engine.Context!.NodeResults["checkAvailableSlot"]["slot_no"]?.ToString();
         Assert.False(string.IsNullOrWhiteSpace(chosenSlotNo));
 
-        var row = rows[2];
         Assert.Equal("mh_load_available_wire", row["action_type"]);
         Assert.Equal(Lot, row["lot_no"]);              // 焊丝批号
         Assert.Equal(Spec, row["wire_spec"]);          // 焊丝型号
@@ -145,6 +141,13 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.Equal(MhLoadFlowId, row["flow_id"]);
         Assert.Equal("updateDB", row["node_id"]);
         Assert.False(string.IsNullOrWhiteSpace(row["ts"]?.ToString()), "时间 ts 不应为空。");
+
+        // 门时刻必须挂在这条业务记录上——否则停写门事件就等于把信息丢了
+        var open = row["door_open_ts"]?.ToString();
+        var close = row["door_close_ts"]?.ToString();
+        Assert.False(string.IsNullOrWhiteSpace(open), "存料记录缺 door_open_ts。");
+        Assert.False(string.IsNullOrWhiteSpace(close), "存料记录缺 door_close_ts。");
+        Assert.True(DateTime.Parse(close!) >= DateTime.Parse(open!), "door_close_ts 早于 door_open_ts。");
     }
 
     [Fact]
@@ -166,7 +169,8 @@ public class OperationLogMhLoadTests : IDisposable
         Assert.DoesNotContain(updateDb.Findings, f => f.Category == "存取记录" && f.Severity == Severity.Error);
 
         var pending = db.Query("SELECT COUNT(*) AS c FROM operation_log_pending;", new Dictionary<string, object?>()).First;
-        Assert.Equal(3L, Convert.ToInt64(pending!["c"]));
+        // 口径优化后一次存料只有 1 条记录，所以待补偿也是 1 条（原先业务+两条门事件 = 3 条）
+        Assert.Equal(1L, Convert.ToInt64(pending!["c"]));
 
         // 业务本身仍然完成：格口确实绑上了焊丝
         var slot = db.Query(

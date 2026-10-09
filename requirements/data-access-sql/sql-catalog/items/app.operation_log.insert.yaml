@@ -14,14 +14,14 @@ sql: |
       qty, remain_qty, station, result, message,
       mes_result, lock_result, error_info,
       door_open_ts, door_close_ts, is_cleared, is_uncommanded,
-      flow_id, node_id
+      flow_id, node_id, detail, slot_count, corrects_id
   ) VALUES (
       :ts, :operator_id, :operator_name, :operator_team, :operator_role, :action_type,
       :slot_no, :lot_no, :wire_spec, :eqp_no, :product_lot_no,
       :qty, :remain_qty, :station, :result, :message,
       :mes_result, :lock_result, :error_info,
       :door_open_ts, :door_close_ts, :is_cleared, :is_uncommanded,
-      :flow_id, :node_id
+      :flow_id, :node_id, :detail, :slot_count, :corrects_id
   );
 params:
   - name: ts
@@ -49,6 +49,9 @@ params:
   - name: is_uncommanded
   - name: flow_id
   - name: node_id
+  - name: detail
+  - name: slot_count
+  - name: corrects_id
 outputs:
   - rows_affected
 result_cardinality: write

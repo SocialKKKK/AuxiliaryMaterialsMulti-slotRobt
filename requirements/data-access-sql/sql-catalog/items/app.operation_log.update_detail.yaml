@@ -1,0 +1,24 @@
+id: app.operation_log.update_detail
+dialect: sqlite
+datasource: app.sqlite
+operation: write
+business_meaning: >-
+  更新记录的 detail 字段（记录口径优化 2026-10-09 §2 口径③）。
+  detail 是**过程派生**字段：自动路径（自动返航 / 自动回充）同一原因连续失败时，
+  把次数与首末时刻累加到这一条上，从而「连续失败 9 次」只留一条记录。
+  它不改写任何业务事实——谁、何时、哪个格口、哪批料、结果都动不了，
+  库层 trg_app_operation_log_append_only 只放行 detail 这一列。
+  定位用 (action_type, ts)，且限定 result='失败'，避免误改成功记录。
+sql: |
+  UPDATE app_operation_log
+     SET detail = :detail
+   WHERE action_type = :action_type
+     AND ts = :ts
+     AND result = '失败';
+params:
+  - name: detail
+  - name: action_type
+  - name: ts
+outputs:
+  - rows_affected
+result_cardinality: write

@@ -102,7 +102,7 @@ public partial class App : Application
             var closed = await doorReconciler.ReconcileAsync(snapshots);
             if (closed.Count > 0)
             {
-                await MhDoors.NotifySlotsClosedAsync(closed, reconciledByHardware: true);
+                await MhDoors.NotifySlotsClosedAsync(closed);
                 Bootstrap.FlowSlots.Reload();
             }
             else

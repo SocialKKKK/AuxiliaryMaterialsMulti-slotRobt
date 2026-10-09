@@ -1,0 +1,26 @@
+id: app.operation_log.backfill_door_ts
+dialect: sqlite
+datasource: app.sqlite
+operation: write
+business_meaning: >-
+  把后到的格口门时刻补进已经写好的那条业务记录（记录口径优化 §4 A 档，2026-10-09）。
+  归还 / 领用是在开门**之前**提交并写记录的，关门确认时刻在写记录时还不存在；
+  这条 UPDATE 只做「把 NULL 补上」，绝不改写任何已有值——库层还有
+  trg_app_operation_log_append_only 触发器把这条约束钉住。
+  定位用 (action_type, ts)：ts 由调用方生成并原样写入，加上 door_close_ts IS NULL，
+  正常只会命中一条；调用方必须校验 rows_affected == 1，否则按失败处理（不阻断业务）。
+sql: |
+  UPDATE app_operation_log
+     SET door_open_ts  = :door_open_ts,
+         door_close_ts = :door_close_ts
+   WHERE action_type = :action_type
+     AND ts = :ts
+     AND door_close_ts IS NULL;
+params:
+  - name: door_open_ts
+  - name: door_close_ts
+  - name: action_type
+  - name: ts
+outputs:
+  - rows_affected
+result_cardinality: write

@@ -43,6 +43,16 @@ public sealed record OperationLogEntry
     // 排障
     public string? FlowId { get; init; }
     public string? NodeId { get; init; }
+
+    // 记录口径优化（2026-10-09）：一次人的动作一条，过程挂字段
+    /// <summary>JSON 明细：批量格口清单 / 被清批号 / 重复失败统计（count、first_ts、last_ts）。</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>一次批量动作涉及的格口数。</summary>
+    public int? SlotCount { get; init; }
+
+    /// <summary>更正记录指向被更正的那条（B 档）；查询默认取最新有效版本。</summary>
+    public long? CorrectsId { get; init; }
 }
 
 /// <summary>记录写入结果。失败不是异常，是返回值。</summary>
@@ -61,6 +71,25 @@ public readonly record struct OperationLogWriteResult(bool Success, string? Erro
 public interface IOperationLogSink
 {
     OperationLogWriteResult TryWrite(OperationLogEntry entry);
+
+    /// <summary>
+    /// 把后到的格口门时刻补进**已经写好**的那条业务记录（记录口径优化 §4 A 档）。
+    ///
+    /// 归还 / 领用是先提交、后开关门的，写记录时关门时刻还不存在，只能事后补。
+    /// 契约与 <see cref="TryWrite"/> 一致：只补 NULL、绝不改写已有值，失败只返回失败结果，
+    /// 不抛异常、不阻断业务。定位键是 (actionType, ts)——ts 由调用方生成并原样写入，
+    /// 必须恰好命中 0 或 1 行；命中 0 行按失败返回（可能已补过，或记录还在待补偿队列里）。
+    /// </summary>
+    OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs);
+
+    /// <summary>
+    /// 更新某条**失败**记录的 <c>detail</c>（口径优化 §2 口径③）：自动路径同一原因连续失败时，
+    /// 把次数与首末时刻累加到那一条上，而不是每条各写一行。
+    ///
+    /// <c>detail</c> 是过程派生字段，不改写业务事实；库层触发器只放行这一列。
+    /// 定位键 (actionType, ts) 必须恰好命中 1 行，否则按失败返回（不阻断业务）。
+    /// </summary>
+    OperationLogWriteResult UpdateFailureDetail(string actionType, string ts, string detail);
 }
 
 /// <summary>
@@ -133,8 +162,88 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
         return OperationLogWriteResult.Fail(error, queued);
     }
 
-    public IReadOnlyList<OperationLogPendingRow> ListPending() => _pending.ListActive();
+    /// <summary>补齐门时刻所用的 catalog 条目。</summary>
+    public const string BackfillDoorTsSqlId = "app.operation_log.backfill_door_ts";
 
+    /// <summary>更新失败记录 detail 所用的 catalog 条目。</summary>
+    public const string UpdateDetailSqlId = "app.operation_log.update_detail";
+
+    /// <summary>
+    /// 更新失败记录的 detail（过程派生字段）。定位键 (actionType, ts) 必须恰好命中 1 行。
+    /// </summary>
+    public OperationLogWriteResult UpdateFailureDetail(string actionType, string ts, string detail)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(actionType) || string.IsNullOrWhiteSpace(ts))
+                return OperationLogWriteResult.Fail("更新明细缺少定位键（action_type / ts）。");
+
+            var item = _catalog.Find(UpdateDetailSqlId);
+            if (item is null)
+                return OperationLogWriteResult.Fail($"缺少 SQL 条目 {UpdateDetailSqlId}。");
+
+            var result = _appDb.Run(item, new Dictionary<string, object?>
+            {
+                ["detail"] = detail,
+                ["action_type"] = actionType,
+                ["ts"] = ts,
+            });
+
+            if (result.HasError)
+                return OperationLogWriteResult.Fail(result.Error!);
+            if (result.RowsAffected != 1)
+                return OperationLogWriteResult.Fail($"更新明细命中 {result.RowsAffected} 行（应恰好 1 行）。");
+
+            return OperationLogWriteResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            return OperationLogWriteResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 只补 NULL 的门时刻，绝不改写已有值——库层 trg_app_operation_log_append_only 会兜底拒绝越界改动。
+    /// 定位键 (actionType, ts) 必须恰好命中 1 行，否则按失败返回（不阻断业务）。
+    /// </summary>
+    public OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(actionType) || string.IsNullOrWhiteSpace(ts))
+                return OperationLogWriteResult.Fail("补齐门时刻缺少定位键（action_type / ts）。");
+            if (string.IsNullOrWhiteSpace(doorCloseTs))
+                return OperationLogWriteResult.Fail("补齐门时刻缺少关门时刻。");
+
+            var item = _catalog.Find(BackfillDoorTsSqlId);
+            if (item is null)
+                return OperationLogWriteResult.Fail($"缺少 SQL 条目 {BackfillDoorTsSqlId}。");
+
+            var result = _appDb.Run(item, new Dictionary<string, object?>
+            {
+                ["door_open_ts"] = doorOpenTs,
+                ["door_close_ts"] = doorCloseTs,
+                ["action_type"] = actionType,
+                ["ts"] = ts,
+            });
+
+            if (result.HasError)
+                return OperationLogWriteResult.Fail(result.Error!);
+
+            // 必须恰好 1 行：0 行说明记录还没落库（还在待补偿队列）或已经补过；
+            // 多于 1 行说明定位键不够唯一。两种都不能算补写成功。
+            if (result.RowsAffected != 1)
+                return OperationLogWriteResult.Fail($"补齐门时刻命中 {result.RowsAffected} 行（应恰好 1 行）。");
+
+            return OperationLogWriteResult.Ok();
+        }
+        catch (Exception ex)
+        {
+            return OperationLogWriteResult.Fail(ex.Message);
+        }
+    }
+
+    public IReadOnlyList<OperationLogPendingRow> ListPending() => _pending.ListActive();
     public int RetryPendingBatch()
     {
         var succeeded = 0;
@@ -299,6 +408,9 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
         ["is_uncommanded"] = e.IsUncommanded ? 1 : 0,
         ["flow_id"] = e.FlowId,
         ["node_id"] = e.NodeId,
+        ["detail"] = e.Detail,
+        ["slot_count"] = e.SlotCount,
+        ["corrects_id"] = e.CorrectsId,
     };
 }
 
@@ -309,6 +421,14 @@ public sealed class SqliteOperationLogSink : IOperationLogSink, IOperationLogCom
 public sealed class NullOperationLogSink : IOperationLogSink, IOperationLogCompensation
 {
     public OperationLogWriteResult TryWrite(OperationLogEntry entry) => OperationLogWriteResult.Ok();
+
+    /// <summary>记录功能已停用，没有可补写的行；保持静默（不产生告警）。</summary>
+    public OperationLogWriteResult BackfillDoorTs(string actionType, string ts, string? doorOpenTs, string? doorCloseTs) =>
+        OperationLogWriteResult.Ok();
+
+    /// <summary>记录功能已停用，没有可更新的行；保持静默。</summary>
+    public OperationLogWriteResult UpdateFailureDetail(string actionType, string ts, string detail) =>
+        OperationLogWriteResult.Ok();
 
     public IReadOnlyList<OperationLogPendingRow> ListPending() => [];
 

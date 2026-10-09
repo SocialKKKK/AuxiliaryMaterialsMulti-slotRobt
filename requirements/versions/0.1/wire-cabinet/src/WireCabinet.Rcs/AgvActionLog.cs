@@ -1,3 +1,4 @@
+using System.Text.Json;
 using WireCabinet.Data;
 
 namespace WireCabinet.Rcs;
@@ -73,4 +74,89 @@ public sealed class AgvActionLog
 
     private static string Join(string message, string? detail) =>
         string.IsNullOrWhiteSpace(detail) ? message : $"{message}（{detail}）";
+
+    /// <summary>
+    /// 自动路径（自动返航 / 自动回充 / 轮询）**同一原因连续失败**合并成一条（口径优化 §2 口径③）：
+    /// 第一次失败立即落库（<c>detail.count = 1</c>），此后同一原因再失败只把次数与末次时刻
+    /// 累加到那一条上（<c>detail</c> 是过程派生字段，库层触发器只放行这一列），不再各写一行。
+    /// 原因变化或成功即结束本轮合并——见 <see cref="EndAutoFailureStreak"/>。
+    ///
+    /// 人工操作失败不走这里：那些要逐条留痕（<see cref="RecordCommand"/>）。
+    /// </summary>
+    public bool RecordAutoFailure(string actionType, string message, string error)
+    {
+        if (_sink is null) return false;
+
+        lock (_gate)
+        {
+            var now = OperationLogTime.UtcNowText();
+
+            if (_autoFailure is { } open
+                && string.Equals(open.ActionType, actionType, StringComparison.Ordinal)
+                && string.Equals(open.Message, message, StringComparison.Ordinal)
+                && string.Equals(open.Error, error, StringComparison.Ordinal))
+            {
+                open.Count++;
+                open.LastTs = now;
+                if (_sink.UpdateFailureDetail(actionType, open.Ts, DetailJson(open.Count, open.FirstTs, open.LastTs)).Success)
+                    return true;
+
+                // 累加失败（例如那条记录还在待补偿队列里、还没落库）：放弃合并，另写一条，
+                // 至少不把这次失败丢掉。
+                _autoFailure = null;
+            }
+            else
+            {
+                _autoFailure = null;
+            }
+
+            var written = _sink.TryWrite(new OperationLogEntry
+            {
+                Ts = now,
+                ActionType = actionType,
+                Result = "失败",
+                Message = message,
+                ErrorInfo = error,
+                Detail = DetailJson(1, now, now),
+            }).Success;
+
+            if (written)
+                _autoFailure = new AutoFailureStreak
+                {
+                    ActionType = actionType,
+                    Message = message,
+                    Error = error,
+                    Ts = now,
+                    FirstTs = now,
+                    LastTs = now,
+                };
+
+            return written;
+        }
+    }
+
+    /// <summary>本轮合并窗口结束（原因变化、成功、或该自动路径不再运行）。</summary>
+    public void EndAutoFailureStreak()
+    {
+        lock (_gate) _autoFailure = null;
+    }
+
+    private static string DetailJson(int count, string firstTs, string lastTs) =>
+        JsonSerializer.Serialize(new { count, first_ts = firstTs, last_ts = lastTs });
+
+    private sealed class AutoFailureStreak
+    {
+        public required string ActionType { get; init; }
+        public required string Message { get; init; }
+        public required string Error { get; init; }
+
+        /// <summary>那条记录落库时用的 ts——累加时靠它定位。</summary>
+        public required string Ts { get; init; }
+        public required string FirstTs { get; init; }
+        public string LastTs { get; set; } = "";
+        public int Count { get; set; } = 1;
+    }
+
+    private readonly object _gate = new();
+    private AutoFailureStreak? _autoFailure;
 }

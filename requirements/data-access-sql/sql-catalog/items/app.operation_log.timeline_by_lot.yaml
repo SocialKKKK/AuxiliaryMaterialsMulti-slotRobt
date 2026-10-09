@@ -12,9 +12,10 @@ sql: |
          qty, remain_qty, station, result, message,
          mes_result, lock_result, error_info,
          door_open_ts, door_close_ts, is_cleared, is_uncommanded,
-         flow_id, node_id
+         flow_id, node_id, detail, slot_count, corrects_id
   FROM app_operation_log
-  WHERE lot_no = :lot_no
+  WHERE id NOT IN (SELECT corrects_id FROM app_operation_log WHERE corrects_id IS NOT NULL)
+    AND lot_no = :lot_no
   ORDER BY ts, id;
 params:
   - name: lot_no
@@ -46,4 +47,7 @@ outputs:
   - is_uncommanded
   - flow_id
   - node_id
+  - detail
+  - slot_count
+  - corrects_id
 result_cardinality: 0..n

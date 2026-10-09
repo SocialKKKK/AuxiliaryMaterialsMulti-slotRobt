@@ -321,12 +321,31 @@ public partial class OperationLogView : UserControl
         OperatorText = string.IsNullOrWhiteSpace(r.OperatorName)
             ? r.OperatorId ?? ""
             : $"{r.OperatorName}({r.OperatorId})",
-        SlotNo = r.SlotNo ?? "",
+        SlotNo = SlotText(r),
         LotNo = r.LotNo ?? "",
         EqpNo = r.EqpNo ?? "",
         ResultText = r.Result ?? "",
-        DetailText = string.IsNullOrWhiteSpace(r.ErrorInfo) ? r.Message ?? "" : r.ErrorInfo!,
+        DetailText = ExplainText(r),
     };
+
+    /// <summary>
+    /// 一次批量开门只有一条记录、没有单个格口号（口径优化 §2）。直接留空会看不出发生了什么，
+    /// 所以显示「N 格」；单格动作仍显示格口号。
+    /// </summary>
+    private static string SlotText(OperationLogRecord r) =>
+        !string.IsNullOrWhiteSpace(r.SlotNo) ? r.SlotNo!
+        : r.SlotCount is > 1 ? $"{r.SlotCount} 格"
+        : "";
+
+    /// <summary>
+    /// 说明列：失败原因优先，否则用记录的说明文案。
+    ///
+    /// 「开门即清空」的被清批号**不**往这里拼：说明列只有 200px（约 20 个汉字），
+    /// 批量开门那条的说明本身就写明了「其中 N 格有料按账面清空」，再拼批号只会被裁掉。
+    /// 完整批号在导出的 Excel（「明细」列）与 `detail.cleared_lots` 里。
+    /// </summary>
+    private static string ExplainText(OperationLogRecord r) =>
+        string.IsNullOrWhiteSpace(r.ErrorInfo) ? r.Message ?? "" : r.ErrorInfo!;
 
     private static OperationLogPendingRowVm ToPendingRow(OperationLogPendingRow row) => new()
     {

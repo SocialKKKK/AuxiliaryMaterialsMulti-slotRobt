@@ -18,7 +18,23 @@ public sealed class DoorStateReconciler
     private readonly UncommandedOpenTracker _uncommanded = new();
     public IReadOnlyList<(long SlotId, string SlotNo)> RecoveredUncommanded { get; private set; } = [];
 
-    /// <summary>对库 open 且 DI 锁闭合的格口执行 ConfirmDoorClosed。返回成功关库的 slot_id。</summary>
+    /// <summary>
+    /// 开门是硬件脉冲（默认 300ms），DI 采样也有延迟；巡检约 2 秒一轮，可能正撞上
+    /// 「库已记为 open、锁还没释放」的窗口。只有连续这么多轮都读到锁闭、且期间从未读到释锁
+    /// （重启后补偿或开锁失败），才认定它其实已关上。正常开门下一轮就读到释锁，累计不到该阈值。
+    /// </summary>
+    private const int LockedPassesBeforeAssumingClosed = 3;
+
+    /// <summary>库内 open 且已真正读到过释锁的格口——判「已关」的前提。</summary>
+    private readonly HashSet<long> _seenReleased = [];
+
+    /// <summary>库内 open、连续读到锁闭但尚未见释锁的轮数。</summary>
+    private readonly Dictionary<long, int> _lockedPasses = [];
+
+    /// <summary>
+    /// 对库 open 且 DI 确认锁闭的格口执行 ConfirmDoorClosed。返回成功关库的 slot_id。
+    /// 参见 <see cref="LockedPassesBeforeAssumingClosed"/>：没见过释锁时不能立刻判「已关」。
+    /// </summary>
     public async Task<IReadOnlyList<long>> ReconcileAsync(
         IReadOnlyDictionary<string, SlotHardwareSnapshot> snapshots,
         CancellationToken ct = default)
@@ -28,7 +44,16 @@ public sealed class DoorStateReconciler
 
         var openIds = _slots.OpenSlotIds();
         if (openIds.Count == 0)
+        {
+            _seenReleased.Clear();
+            _lockedPasses.Clear();
             return [];
+        }
+
+        // 只保留仍在库内 open 的格口，避免追踪集合无界增长
+        _seenReleased.RemoveWhere(id => !openIds.Contains(id));
+        foreach (var stale in _lockedPasses.Keys.Where(id => !openIds.Contains(id)).ToList())
+            _lockedPasses.Remove(stale);
 
         var slots = await _slots.ListSlotsAsync(new SlotListFilter { EnabledOnly = false }, ct);
         var closed = new List<long>();
@@ -39,13 +64,31 @@ public sealed class DoorStateReconciler
             if (row is null || row.DoorState != "open")
                 continue;
 
-            if (!snapshots.TryGetValue(row.SlotNo, out var hw)
-                || !hw.ReadOk
-                || hw.LockClosed != true)
+            if (!snapshots.TryGetValue(row.SlotNo, out var hw) || !hw.ReadOk || hw.LockClosed is null)
                 continue;
 
+            if (hw.LockClosed == false)
+            {
+                // 真正读到释锁：门确实开过。这是后面判「已关」的前提。
+                _seenReleased.Add(id);
+                _lockedPasses.Remove(id);
+                continue;
+            }
+
+            if (!_seenReleased.Contains(id))
+            {
+                var passes = (_lockedPasses.TryGetValue(id, out var previous) ? previous : 0) + 1;
+                _lockedPasses[id] = passes;
+                if (passes < LockedPassesBeforeAssumingClosed)
+                    continue;
+            }
+
             if (await _slots.ConfirmDoorClosedAsync(id, ct))
+            {
                 closed.Add(id);
+                _seenReleased.Remove(id);
+                _lockedPasses.Remove(id);
+            }
         }
 
         return closed;

@@ -57,6 +57,9 @@ io-modules.yaml
 # WAL 模式会额外产生 -wal / -shm 两个附属文件，同样不能入库
 requirements/versions/0.1/wire-cabinet/data/app.db*
 
+# 运行时快照目录（工具生成的临时副本，含 appsettings.Local.json 与一份 db，不入库）
+.runtime-inspect-*/
+
 # 其它常见临时文件
 *.tmp
 *.bak

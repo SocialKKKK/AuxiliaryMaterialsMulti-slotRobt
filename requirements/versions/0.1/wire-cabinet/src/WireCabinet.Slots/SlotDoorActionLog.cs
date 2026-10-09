@@ -1,3 +1,4 @@
+using System.Text.Json;
 using WireCabinet.Data;
 
 namespace WireCabinet.Slots;
@@ -11,21 +12,27 @@ public sealed record DoorOperator(string Role, string? Id = null, string? Name =
 }
 
 /// <summary>
-/// 格口开/关门动作的记录（0.2 需求范围 §3 覆盖矩阵第 5/6/7 项、第 9 项）。
+/// 格口开/关门动作的记录（0.2 需求范围 §3 覆盖矩阵第 5/6/7/9/10/11 项）。
+///
+/// 粒度（记录口径优化 2026-10-09 §2）：**一次开门 = 一条记录**，关门时刻是这条上的字段。
+/// <list type="bullet">
+/// <item>单格开门 / 维护试开：一条（<c>action_type</c> + <c>slot_no</c> + <c>door_open_ts</c>），
+/// 关门确认后回填 <c>door_close_ts</c>；</item>
+/// <item>批量开门：一条（<c>slot_count</c> + <c>detail.slots</c>），同样回填 <c>door_close_ts</c>；</item>
+/// <item>「开门即清空」降级为字段（<c>is_cleared</c> + <c>detail.cleared_lots</c>），不再单独成条；</item>
+/// <item>无指令开门是异常，仍按「开门一条 + 关门一条」配对保留（草案 §3.4）。</item>
+/// </list>
+/// 开锁失败的格口也留一条（§ 矩阵第 9 项：失败不单独成动作类型，而是同一动作的 result=失败）。
 ///
 /// **为什么放在 Slots 而不是界面层**：界面层是 net8.0-windows，测试工程引用不了，
-/// 而这里最容易错的恰好是「批量按格口逐个计条」——条数必须与实际开门数一致（验收 §3 第 6 项）。
-/// 放在这里就能用真 sink + 真库把条数钉住。
-///
-/// 粒度按 §3.2「一次业务操作一条」：单格开门一条；批量开门按被打开的格口逐个一条；
-/// 开锁失败的格口也留一条（§ 矩阵第 9 项：失败不单独成动作类型，而是同一动作的 result=失败）。
+/// 而这里最容易错的恰好是条数与配对。放在这里就能用真 sink + 真库把条数钉住。
 /// </summary>
 public sealed class SlotDoorActionLog
 {
     /// <summary>MH 打开单个格口。</summary>
     public const string MhOpenSlot = OperationLogActionTypes.MhOpenSlot;
 
-    /// <summary>MH 批量打开格口（每个格口一条）。</summary>
+    /// <summary>MH 批量打开格口（一次批量一条）。</summary>
     public const string MhOpenSlotsBatch = OperationLogActionTypes.MhOpenSlotsBatch;
 
     /// <summary>维护试开（留痕）。</summary>
@@ -36,37 +43,71 @@ public sealed class SlotDoorActionLog
     public SlotDoorActionLog(IOperationLogSink? sink) => _sink = sink;
 
     /// <summary>
-    /// 为每个**成功打开**的格口各写一条，返回写入成功的条数。
-    /// 记录写入失败不影响开门结果（§1.4 第 1 条），故只吞掉失败并计数。
+    /// 写一条单格开门记录（MH 单格 / 维护试开）。返回是否写入成功。
+    ///
+    /// <paramref name="openedAtUtc"/> 同时用作记录的 <c>ts</c> 与 <c>door_open_ts</c>——
+    /// 关门回填要靠它定位那条记录，所以调用方必须原样传回同一个值。
+    /// <paramref name="clearedLotNo"/> 是开门时该格账面已有的批号（有则记 <c>is_cleared</c>）。
     /// </summary>
-    public int RecordOpened(string actionType, IEnumerable<(long SlotId, string SlotNo)> openedSlots,
-        DoorOperator op, string? openedAtUtc = null)
-    {
-        if (_sink is null) return 0;
-
-        var written = 0;
-        foreach (var (_, slotNo) in openedSlots)
-        {
-            var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
-            var entry = NewEntry(actionType, op, slotNo, "成功", $"已打开 {slotNo}（仅门/锁状态）", null)
-                with { Ts = openTime, DoorOpenTs = openTime };
-            if (_sink.TryWrite(entry).Success)
-                written++;
-        }
-        return written;
-    }
-
-    /// <summary>关门确认另记一条，关联同格的开门时刻；历史开门记录保持只增不改。</summary>
-    public bool RecordClosed(string slotNo, DoorOperator op, string? openedAtUtc = null,
-        bool isUncommanded = false)
+    public bool RecordOpened(string actionType, string slotNo, DoorOperator op,
+        string? openedAtUtc = null, string? clearedLotNo = null)
     {
         if (_sink is null) return false;
 
-        var closeTime = OperationLogTime.UtcNowText();
-        var entry = NewEntry(OperationLogActionTypes.DoorClose, op, slotNo, "成功",
-            $"格口 {slotNo} 已确认关门", null, isUncommanded: isUncommanded)
-            with { Ts = closeTime, DoorOpenTs = openedAtUtc, DoorCloseTs = closeTime };
+        var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
+        var cleared = string.IsNullOrWhiteSpace(clearedLotNo) ? null : clearedLotNo.Trim();
+        var message = cleared is null
+            ? $"已打开 {slotNo}（仅门/锁状态）"
+            : $"已打开 {slotNo} 并按账面清空（原批号 {cleared}）";
+
+        var entry = NewEntry(actionType, op, slotNo, "成功", message, null,
+            lotNo: cleared, isCleared: cleared is not null)
+            with
+        {
+            Ts = openTime,
+            DoorOpenTs = openTime,
+            Detail = cleared is null ? null : JsonSerializer.Serialize(new { cleared_lots = new[] { cleared } }),
+        };
         return _sink.TryWrite(entry).Success;
+    }
+
+    /// <summary>
+    /// 写一条批量开门记录（一次批量一条，口径优化 §2）。格口清单与数量挂在 detail / slot_count 上。
+    /// <paramref name="clearedLots"/> 是开门时这些格里账面有料的批号。
+    /// </summary>
+    public bool RecordBatchOpened(string actionType, IReadOnlyList<(long SlotId, string SlotNo)> slots,
+        DoorOperator op, string? openedAtUtc = null, IReadOnlyList<string>? clearedLots = null)
+    {
+        if (_sink is null || slots.Count == 0) return false;
+
+        var openTime = openedAtUtc ?? OperationLogTime.UtcNowText();
+        var slotNos = slots.Select(s => s.SlotNo).ToList();
+        var lots = clearedLots?.Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => l.Trim()).Distinct().ToList() ?? [];
+        var message = $"批量打开 {slotNos.Count} 个格口（仅门/锁状态）"
+            + (lots.Count > 0 ? $"，其中 {lots.Count} 格有料按账面清空" : "");
+
+        var entry = NewEntry(actionType, op, slotNos.Count == 1 ? slotNos[0] : null, "成功", message, null,
+            isCleared: lots.Count > 0)
+            with
+        {
+            Ts = openTime,
+            DoorOpenTs = openTime,
+            SlotCount = slotNos.Count,
+            Detail = JsonSerializer.Serialize(new { slots = slotNos, cleared_lots = lots }),
+        };
+        return _sink.TryWrite(entry).Success;
+    }
+
+    /// <summary>
+    /// 关门确认：把 <c>door_close_ts</c> 补进那次开门的那条记录（只补 NULL，口径优化 §4 A 档）。
+    /// 定位用 (actionType, openedAtUtc)——开门记录的 ts 就是它。
+    /// </summary>
+    public bool RecordClosed(string actionType, string openedAtUtc, string? closedAtUtc = null)
+    {
+        if (_sink is null || string.IsNullOrWhiteSpace(openedAtUtc)) return false;
+
+        var closeTime = closedAtUtc ?? OperationLogTime.UtcNowText();
+        return _sink.BackfillDoorTs(actionType, openedAtUtc, openedAtUtc, closeTime).Success;
     }
 
     /// <summary>开锁失败的格口也留一条，带原因（§ 矩阵第 9 项）。</summary>
@@ -98,20 +139,17 @@ public sealed class SlotDoorActionLog
     }
 
     /// <summary>
-    /// 开门即清空（§ 矩阵第 11 项）：格口无内部传感器，MH 开门关门后按账面无料处理。
-    /// <c>is_cleared = 1</c>，并带上被清掉的焊丝批号（有的话）以便追溯。
+    /// 无指令开门对应的关门（异常，仍独立成条并与开门配对——草案 §3.4）。
+    /// 注意与正常关门不同：这里不并入开门记录，而是另写一条带 <c>is_uncommanded</c> 的关门。
     /// </summary>
-    public bool RecordCleared(string slotNo, string? clearedLotNo, DoorOperator op)
+    public bool RecordUncommandedClosed(string slotNo, string? openedAtUtc, string? closedAtUtc = null)
     {
         if (_sink is null) return false;
 
-        var message = string.IsNullOrWhiteSpace(clearedLotNo)
-            ? $"格口 {slotNo} 按账面无料清空"
-            : $"格口 {slotNo} 按账面无料清空（原批号 {clearedLotNo}）";
-
-        var entry = NewEntry(
-            OperationLogActionTypes.MhAssumeEmpty, op, slotNo, "成功", message, null,
-            lotNo: clearedLotNo, isCleared: true);
+        var closeTime = closedAtUtc ?? OperationLogTime.UtcNowText();
+        var entry = NewEntry(OperationLogActionTypes.DoorClose, new DoorOperator(""), slotNo, "成功",
+            $"格口 {slotNo} 已确认关门", null, isUncommanded: true)
+            with { Ts = closeTime, DoorOpenTs = openedAtUtc, DoorCloseTs = closeTime };
 
         return _sink.TryWrite(entry).Success;
     }

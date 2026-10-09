@@ -130,6 +130,7 @@ public sealed class FlowEngine
             var closedAt = NowUtcText();
             ctx.Runtime[DoorCloseTsKey] = closedAt;
             LogDoorEvent(node, FlowDoorSlotNo(node), closedAt, opening: false);
+            BackfillBusinessDoorTs(node, closedAt);
         }
 
         var (next, findings) = Route(node, "success");
@@ -488,6 +489,10 @@ public sealed class FlowEngine
             MesResult = success ? "ok" : syncError,
             // 能走到 updateDB 说明格口已经开过并关过，两种结果下都成立
             LockResult = "ok",
+            // 门时刻并入业务记录（口径优化 §2）：开门/关门不再单独成条，两个时刻挂在这条上。
+            // updateDB 在 closeAvailableSlotDoor 之后执行，Runtime 里两个时刻都已就绪。
+            DoorOpenTs = RuntimeValue(DoorOpenTsKey),
+            DoorCloseTs = RuntimeValue(DoorCloseTsKey),
         });
     }
 
@@ -517,6 +522,8 @@ public sealed class FlowEngine
     private void LogDoorEvent(FlowNode node, string? slotNo, string eventAt, bool opening)
     {
         if (_svc.OperationLog is not { } sink || string.IsNullOrWhiteSpace(slotNo)) return;
+        // 业务流程的门时刻已经挂在业务记录上（口径优化 §2），不再单独成条。
+        if (FlowProducesBusinessRecord) return;
         var opFlow = Flow!.FlowId.StartsWith("operator_", StringComparison.OrdinalIgnoreCase);
         var lotNo = node.Id.Contains("Return", StringComparison.OrdinalIgnoreCase)
             ? Field("inputReturnedWireLotNo", "returned_wire_lot_no")
@@ -566,6 +573,34 @@ public sealed class FlowEngine
         ["submitWireIssue"] = OpIssueActionType,
     };
 
+    /// <summary>归还 / 领用业务记录的定位键（记录写入时用的 ts），供关门后回填门时刻。</summary>
+    private const string OpReturnRecordTsKey = "op_return_record_ts";
+    private const string OpIssueRecordTsKey = "op_issue_record_ts";
+
+    /// <summary>关门确认节点 → 该半程业务记录的定位键。见 BackfillBusinessDoorTs。</summary>
+    private static readonly Dictionary<string, string> OpBackfillKeyByNodeId = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["closeReturnSlotDoor"] = OpReturnRecordTsKey,
+        ["closeIssueSlotDoor"] = OpIssueRecordTsKey,
+    };
+
+    private bool? _flowProducesBusinessRecord;
+
+    /// <summary>
+    /// 本流程是否会产生业务记录（口径优化 §2，2026-10-09）。是则开门 / 关门降级为业务记录上的
+    /// <c>door_open_ts</c> / <c>door_close_ts</c>，不再单独写 door_open / door_close。
+    ///
+    /// 之所以能安全地整流程抑制：这两个流程的门都在「写业务记录」之后才开——
+    /// 存料的门在 openAvailableSlot，记录在 updateDB；领用 / 归还的门在 openReturnSlot /
+    /// openIssueSlot，记录在 submitWireReturn / submitWireIssue（都在开门之前）。
+    /// 所以不会出现「门开过、却没有任何业务记录」的空档。
+    /// 反过来，MH 单格 / 批量开门与维护试开没有业务记录，门事件仍单独成条。
+    /// </summary>
+    private bool FlowProducesBusinessRecord => _flowProducesBusinessRecord ??= Flow!.Nodes.Values.Any(n =>
+        string.Equals(n.SqlId, MhBindWireSqlId, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(n.SqlId, TakePickupSqlId, StringComparison.OrdinalIgnoreCase)
+        || OpActionByNodeId.ContainsKey(n.Id));
+
     /// <summary>本节点是否对应一个需要记录的存取动作；是则写一条（成功与失败都写）。</summary>
     private void LogFlowAction(
         FlowNode node, IDictionary<string, object?> parameters, string key, List<Finding> findings, DbResult result)
@@ -580,7 +615,14 @@ public sealed class FlowEngine
             LogOperatorTake(node, key, findings, result);
     }
 
-    /// <summary>归还（§3.1 第 2 项）/ 领用（第 3 项）提交成功后的记录；失败同样记一条。</summary>
+    /// <summary>
+    /// 归还（§3.1 第 2 项）/ 领用（第 3 项）提交成功后的记录；失败同样记一条。
+    ///
+    /// 口径优化（2026-10-09）后：领用这条同时就是「取出」那条（两者合并，见 <see cref="LogOperatorTake"/>），
+    /// 且归还 / 领用都是在开门**之前**提交的，此刻还没有关门时刻——记录先落库（门时刻为 NULL），
+    /// 关门确认时由 <see cref="BackfillBusinessDoorTs"/> 把门时刻补上。
+    /// 定位键（本次写入的 ts）存进 Runtime 供回填使用。
+    /// </summary>
     private void LogOperatorSubmit(FlowNode node, string actionType, string key, List<Finding> findings, DbResult result)
     {
         if (_svc.OperationLog is not { } sink) return;
@@ -588,8 +630,12 @@ public sealed class FlowEngine
         var success = string.Equals(key, "success", StringComparison.Ordinal);
         var isReturn = string.Equals(actionType, OpReturnActionType, StringComparison.Ordinal);
 
+        // ts 由这里生成并原样写入：关门后要按它回填门时刻，必须与落库值完全一致。
+        var recordTs = NowUtcText();
+
         WriteEntry(sink, node, findings, "操作", new OperationLogEntry
         {
+            Ts = recordTs,
             ActionType = actionType,
             FlowId = Flow!.FlowId,
             NodeId = node.Id,
@@ -619,17 +665,24 @@ public sealed class FlowEngine
             ErrorInfo = success ? null : result.Error,
             MesResult = success ? "ok" : result.Error,
         });
+
+        // 只有成功写入才可能被回填（失败时没落库，回填会命中 0 行）。
+        if (success)
+            Context!.Runtime[isReturn ? OpReturnRecordTsKey : OpIssueRecordTsKey] = recordTs;
     }
 
     /// <summary>
-    /// 取出焊丝（§3.1 第 4 项）：关门后单独一条，含该格的开门 / 关门确认时刻。
-    /// 关门在操作员流程里是用户确认，故 door_close_ts 取确认时刻（§3.3 的定义）。
+    /// 取出焊丝的库存更新（节点 <c>updateIssueSlotAfterUnload</c>）。
+    ///
+    /// 口径优化（2026-10-09）：领用与取出**合并成一条**——成功时不再单独记，那条
+    /// <c>op_issue_available_wire</c> 已在提交时写好、门时刻也在关门确认时补上了。
+    /// 只有这次库存更新**失败**才留一条：这是异常，必须看得见失败原因
+    /// （验收 §9 要求失败记录带 error_info）。
     /// </summary>
     private void LogOperatorTake(FlowNode node, string key, List<Finding> findings, DbResult result)
     {
         if (_svc.OperationLog is not { } sink) return;
-
-        var success = string.Equals(key, "success", StringComparison.Ordinal);
+        if (string.Equals(key, "success", StringComparison.Ordinal)) return;
 
         WriteEntry(sink, node, findings, "取出", new OperationLogEntry
         {
@@ -647,10 +700,31 @@ public sealed class FlowEngine
             ProductLotNo = Field("inputIssueProductLotNo", "issue_product_lot_no"),
             DoorOpenTs = RuntimeValue(DoorOpenTsKey),
             DoorCloseTs = RuntimeValue(DoorCloseTsKey),
-            Result = success ? "成功" : "失败",
-            Message = success ? "取出完成" : "取出失败",
-            ErrorInfo = success ? null : result.Error,
+            Result = "失败",
+            Message = "取出后库存更新失败",
+            ErrorInfo = result.Error,
         });
+    }
+
+    /// <summary>
+    /// 关门确认后，把这一对门时刻补进该半程已经写好的业务记录（口径优化 §5 路线②）。
+    ///
+    /// 归还 / 领用是在开门之前提交并写记录的，写记录时关门时刻还不存在，只能事后补。
+    /// 回填只补 NULL、绝不改写已有值（库层触发器兜底）；失败只告警，
+    /// **绝不改变业务 outcome 或路由**（§1.4）。
+    /// </summary>
+    private void BackfillBusinessDoorTs(FlowNode node, string closedAt)
+    {
+        if (_svc.OperationLog is not { } sink) return;
+        if (!OpBackfillKeyByNodeId.TryGetValue(node.Id, out var key)) return;
+        if (RuntimeValue(key) is not { Length: > 0 } recordTs) return;
+
+        var isReturn = string.Equals(key, OpReturnRecordTsKey, StringComparison.Ordinal);
+        var actionType = isReturn ? OpReturnActionType : OpIssueActionType;
+
+        var result = sink.BackfillDoorTs(actionType, recordTs, RuntimeValue(DoorOpenTsKey), closedAt);
+        if (!result.Success)
+            System.Diagnostics.Trace.TraceWarning($"补齐 {actionType} 门时刻失败：{result.Error}");
     }
 
     /// <summary>

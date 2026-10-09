@@ -34,6 +34,9 @@ public static class OperationLogSchema
         ("door_close_ts",  "TEXT"),
         ("is_cleared",     "INTEGER NOT NULL DEFAULT 0"),
         ("is_uncommanded", "INTEGER NOT NULL DEFAULT 0"),
+        ("detail",         "TEXT"),
+        ("slot_count",     "INTEGER"),
+        ("corrects_id",    "INTEGER"),
     };
 
     /// <summary>查询用索引：六项筛选条件 + 追溯。</summary>
@@ -61,12 +64,60 @@ public static class OperationLogSchema
         foreach (var (name, columns) in Indexes)
             Exec(conn, $"CREATE INDEX IF NOT EXISTS {name} ON app_operation_log({columns});");
 
+        // 触发器引用了上面刚补的列，必须在补列之后创建。
+        Exec(conn, AppendOnlyTriggerSql);
+
         Exec(conn, PendingTableSql);
 
         // 待补偿表同样要补列：老库里该表已存在，CREATE TABLE IF NOT EXISTS 不会加列。
         foreach (var (column, definition) in PendingColumns)
             EnsureColumn(conn, "operation_log_pending", column, definition);
     }
+
+    /// <summary>
+    /// 库层的「业务事实不可改写」触发器（口径优化 A 档）。与 <c>scripts/schema.sqlite.sql</c>
+    /// 中的定义必须一致——老库靠这里幂等补建，新库走建表脚本。改动请同步两处。
+    ///
+    /// 放行两件事：补齐 NULL 的门时刻；更新 <c>detail</c>（过程派生字段，承载「连续失败次数 /
+    /// 首末时刻」这类随后续事件增长的信息）。业务事实列一律 ABORT。
+    /// </summary>
+    private const string AppendOnlyTriggerSql = """
+        CREATE TRIGGER IF NOT EXISTS trg_app_operation_log_append_only
+        BEFORE UPDATE ON app_operation_log
+        FOR EACH ROW
+        WHEN
+               NEW.id             IS NOT OLD.id
+            OR NEW.ts             IS NOT OLD.ts
+            OR NEW.operator_id    IS NOT OLD.operator_id
+            OR NEW.operator_name  IS NOT OLD.operator_name
+            OR NEW.operator_team  IS NOT OLD.operator_team
+            OR NEW.operator_role  IS NOT OLD.operator_role
+            OR NEW.action_type    IS NOT OLD.action_type
+            OR NEW.slot_no        IS NOT OLD.slot_no
+            OR NEW.lot_no         IS NOT OLD.lot_no
+            OR NEW.wire_spec      IS NOT OLD.wire_spec
+            OR NEW.eqp_no         IS NOT OLD.eqp_no
+            OR NEW.product_lot_no IS NOT OLD.product_lot_no
+            OR NEW.station        IS NOT OLD.station
+            OR NEW.qty            IS NOT OLD.qty
+            OR NEW.remain_qty     IS NOT OLD.remain_qty
+            OR NEW.result         IS NOT OLD.result
+            OR NEW.message        IS NOT OLD.message
+            OR NEW.mes_result     IS NOT OLD.mes_result
+            OR NEW.lock_result    IS NOT OLD.lock_result
+            OR NEW.error_info     IS NOT OLD.error_info
+            OR NEW.is_cleared     IS NOT OLD.is_cleared
+            OR NEW.is_uncommanded IS NOT OLD.is_uncommanded
+            OR NEW.flow_id        IS NOT OLD.flow_id
+            OR NEW.node_id        IS NOT OLD.node_id
+            OR NEW.slot_count     IS NOT OLD.slot_count
+            OR NEW.corrects_id    IS NOT OLD.corrects_id
+            OR (OLD.door_open_ts  IS NOT NULL AND NEW.door_open_ts  IS NOT OLD.door_open_ts)
+            OR (OLD.door_close_ts IS NOT NULL AND NEW.door_close_ts IS NOT OLD.door_close_ts)
+        BEGIN
+            SELECT RAISE(ABORT, 'app_operation_log 业务事实不可改写：仅允许补齐 NULL 的门时刻与更新 detail');
+        END;
+        """;
 
     /// <summary>待补偿表：记录写入失败时转存整条记录（JSON），供后台重试与人工重试。</summary>
     private const string PendingTableSql = """

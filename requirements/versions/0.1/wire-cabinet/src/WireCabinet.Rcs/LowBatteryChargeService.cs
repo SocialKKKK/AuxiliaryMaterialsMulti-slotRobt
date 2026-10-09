@@ -19,7 +19,6 @@ public sealed class LowBatteryChargeService
     private int? _manualWorkStationHint;
     private bool _wasAtCharge;
     private readonly ISlotControlService? _slots;
-    private string? _lastReturnFailure;
 
     /// <summary>充满后自动返航的记录（0.2 §3.1 第 8 项）；为 null 时不记。</summary>
     private readonly AgvActionLog? _agvLog;
@@ -162,7 +161,7 @@ public sealed class LowBatteryChargeService
                 return null;
             }
             var order = await _client.CreateMoveOrderAsync(returnStation, cancellationToken: ct).ConfigureAwait(false);
-            _lastReturnFailure = null;
+            _agvLog?.EndAutoFailureStreak();
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Move);
             var name = _stations.TryGetWorkStationAt(returnStation)?.Name ?? returnStation.ToString();
             _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: true, detail: $"→ {name}（{order.OrderId}）");
@@ -171,9 +170,8 @@ public sealed class LowBatteryChargeService
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            if (_lastReturnFailure != ex.Message)
-                _agvLog?.RecordCommand(AgvActionLog.AgvMove, "充满电后自动返航", ok: false, error: ex.Message);
-            _lastReturnFailure = ex.Message;
+            // 自动路径的同一原因连续失败合并成一条（口径优化 §2 口径③）：不再每轮各记一条。
+            _agvLog?.RecordAutoFailure(AgvActionLog.AgvMove, "充满电后自动返航", ex.Message);
             return $"返航失败：{ex.Message}";
         }
     }

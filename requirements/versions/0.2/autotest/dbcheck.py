@@ -38,16 +38,20 @@ from pathlib import Path
 
 # Mirrors WireCabinet.Data.OperationLogActionTypes (codes only; labels are UI concerns).
 ACTION_LABELS = {
-    "mh_load_available_wire": "MH 存入可用焊丝",
+    # 存取动作 2×2（口径收敛 2026-10-09）
+    "mh_load_available_wire": "MH 存入焊丝",
+    "mh_take_wire": "MH 取出旧焊丝",
     "op_return_wire": "OP 归还旧焊丝",
     "op_issue_available_wire": "OP 领用新焊丝",
-    "op_take_wire": "OP 取出焊丝",
-    "door_open": "格口开门",
-    "mh_open_slot": "MH 打开单个格口",
-    "mh_open_slots_batch": "MH 批量打开格口",
     "maint_trial_open": "维护试开格口",
+    "uncommanded_open": "无指令开门",
+    # 历史码（口径收敛前产生，只用于显示老数据）
+    "op_take_wire": "OP 取出焊丝（旧）",
+    "door_open": "格口开门（旧）",
+    "mh_open_slot": "MH 打开格口（旧）",
+    "mh_open_slots_batch": "MH 批量打开格口（旧）",
     "door_close": "格口关门",
-    "mh_assume_empty": "开门即清空",
+    "mh_assume_empty": "开门即清空（旧）",
     "agv_move": "AGV 控车",
     "agv_charge": "AGV 自动回充",
     "view_operation_log": "查看存取记录",
@@ -162,7 +166,7 @@ def cmd_counts(conn: sqlite3.Connection, tz: timezone, args) -> int:
 
         python dbcheck.py counts <app.db> --since "<那个时刻>"
 
-    口径优化后一次「人的操作」应恰好 **1 条**：存料 1、批量开门 1（带 slot_count）、
+    口径优化后一次「人的操作」应恰好 **1 条**：存料 1、**批量开门逐格 N 条**、
     一轮存废取新 2（归还 + 领用并取出）、自动返航连续失败 1（detail.count 记次数）。
     """
     since = getattr(args, "since", None)
@@ -258,7 +262,8 @@ def cmd_pairs(conn: sqlite3.Connection, tz: timezone, args) -> int:
         )
 
     # 无指令开门的异常配对（仍独立成条，见草案 §3.4）
-    open_where, open_params = scoped("is_uncommanded = 1 AND action_type IN ('door_open', 'mh_open_slot')")
+    open_where, open_params = scoped(
+        "is_uncommanded = 1 AND action_type IN ('uncommanded_open', 'door_open', 'mh_open_slot')"
     uncommanded_opens = conn.execute(
         f"SELECT slot_no, ts FROM app_operation_log WHERE {open_where} ORDER BY ts",
         open_params,
@@ -385,7 +390,7 @@ def cmd_verify(conn: sqlite3.Connection, tz: timezone, args) -> int:
               AND NOT EXISTS (
                 SELECT 1 FROM app_operation_log o
                 WHERE o.slot_no = c.slot_no AND o.is_uncommanded = 1
-                  AND o.action_type IN ('door_open','mh_open_slot')
+                  AND o.action_type IN ('uncommanded_open','door_open','mh_open_slot')
                   AND o.ts = c.door_open_ts)
             """,
             wparams,

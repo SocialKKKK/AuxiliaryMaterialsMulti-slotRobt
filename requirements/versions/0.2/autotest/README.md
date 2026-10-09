@@ -59,7 +59,7 @@
    应用按 `CabinetPaths` 从 exe 目录**向上找** `requirements/flows/flow-sql-map/index.yaml` 定位仓库根，
    再从 `requirements/data-access-sql/sql-catalog/items` 读 SQL —— 所以这个目录必须在。
 
-数据库不用手工动：启动时 `OperationLogSchema.Ensure` 幂等补 `detail` / `slot_count` / `corrects_id`
+数据库不用手工动：启动时 `OperationLogSchema.Ensure` 幂等补 `detail` / `corrects_id`
 三列并建 `trg_app_operation_log_append_only` 触发器。已在**现场库副本**（10-09 17:12 拉的 9624 条）上
 预演过：真数据原样保留、加列与建触发器正常、触发器能挡住改事实且放行 detail、记录页正常渲染。
 
@@ -72,7 +72,7 @@
 |---|---|
 | MH 存一盘焊丝 | `mh_load_available_wire` **1 条**，`door_open_ts` / `door_close_ts` 都非空 |
 | OP 一轮存废取新 | `op_return_wire` 1 条 + `op_issue_available_wire` 1 条（领用与取出已合并），两条都有门时刻 |
-| MH 批量开格口 | `mh_open_slots_batch` **1 条**，`slot_count` = 实际格口数，`detail.slots` 列出格口号 |
+| MH 开门取旧 | `mh_take_wire` **逐格一条**（打开 N 格 = N 条），每条带格口号与取走的批号 |
 | 开门后再关门 | 不新增记录，那条开门记录的 `door_close_ts` 被回填 |
 | 自动返航连续失败 | `agv_move` **1 条**，`detail.count` 记次数 |
 
@@ -236,7 +236,7 @@ run-on-cabinet.cmd C:\autotest\ui\steps\dump-current.json C:\autotest\runs\dump
 
 **本机已验证到的范围**（不只是"脚本没报错"）：界面控件定位、门禁弹窗跳过、页面切换、
 真实截图、**导出到原生保存对话框并落盘**、以及**记录通道**——本地库确实多了应用写的
-`export_operation_log`（导出留痕）与 `mh_open_slots_batch 失败 / 开锁失败：硬件未响应。`（失败也留一条带原因）。
+`export_operation_log`（导出留痕）与 `mh_take_wire 失败 / 取出失败：…`（失败也留一条带原因）。
 
 ### 8.1 跑一个场景
 

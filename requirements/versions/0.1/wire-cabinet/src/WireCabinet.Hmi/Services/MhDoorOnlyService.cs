@@ -134,19 +134,21 @@ public sealed class MhDoorOnlyService
     private void RecordDoorClosedIfTracked(OpenedDoorRecord opened, string closedAt) =>
         _doorLog.RecordClosed(opened.ActionType, opened.OpenedAtUtc, closedAt);
 
-    /// <summary>开门时该格账面已有的批号——「开门即清空」要清掉的那批（与 assume_empty 同口径）。</summary>
+    /// <summary>
+    /// 开门时该格账面已有的批号 —— 取出时被取走的那批。
+    ///
+    /// **不看 <c>biz_state</c>**：只要账面记着批号，格子里就有料，开门 + 关门就等于取走。
+    /// 这里原先只认 <c>available_wire</c>，于是「打开所有归还焊丝格口」取走的
+    /// <c>returned_wire</c> 批号被漏记 —— 而 <c>app.slot.assume_empty</c> 是不分状态一律清账面的，
+    /// 结果是**账面上的批号被抹掉、记录里又没有**，那批料在追溯链上直接消失。
+    /// </summary>
     private string? ReadClearedLotAtOpen(long slotId)
     {
         var invItem = _catalog.Find("app.slot.get_inventory");
         if (invItem is null) return null;
 
         var inv = _appDb.Run(invItem, new Dictionary<string, object?> { ["slot_id"] = slotId });
-        var row = inv.First;
-        if (row is null
-            || !string.Equals(row.GetValueOrDefault("biz_state")?.ToString(), "available_wire", StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return row.GetValueOrDefault("wire_lot_no")?.ToString()?.Trim();
+        return SlotInventoryLot.Of(inv.First);
     }
 
     /// <summary>

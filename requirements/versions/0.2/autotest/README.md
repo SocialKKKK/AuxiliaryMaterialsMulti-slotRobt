@@ -44,6 +44,54 @@
 
 ---
 
+## 0.1 记录口径优化：部署与复核（2026-10-09 本地已实现，**现场待验**）
+
+一次人的操作现在只写**一条**记录，开门 / 关门 / 清空是这条上的字段。这次部署除了 DLL，
+**还必须同步 `sql-catalog/items/`** —— 新增了两个写条目，缺了它们回填门时刻、更新 detail 会报
+「缺少 SQL 条目」并静默降级（业务不受影响，但记录会缺门时刻）。
+
+**必须同步到柜体机的两样**
+
+1. Release 产物（`WireCabinet.Hmi.exe` / `WireCabinet.{Data,Slots,Flow,Rcs}.dll` 等）→ 原地覆盖
+   `...\bin\Release\net8.0-windows\`。
+2. **`requirements/data-access-sql/sql-catalog/items/`**：新增 `app.operation_log.backfill_door_ts.yaml`、
+   `app.operation_log.update_detail.yaml`，改过 `app.operation_log.insert.yaml` 与 3 个读条目。
+   应用按 `CabinetPaths` 从 exe 目录**向上找** `requirements/flows/flow-sql-map/index.yaml` 定位仓库根，
+   再从 `requirements/data-access-sql/sql-catalog/items` 读 SQL —— 所以这个目录必须在。
+
+数据库不用手工动：启动时 `OperationLogSchema.Ensure` 幂等补 `detail` / `slot_count` / `corrects_id`
+三列并建 `trg_app_operation_log_append_only` 触发器。已在**现场库副本**（10-09 17:12 拉的 9624 条）上
+预演过：真数据原样保留、加列与建触发器正常、触发器能挡住改事实且放行 detail、记录页正常渲染。
+
+**回滚只换 DLL 就够**：新增列对旧代码是可空且被忽略的（旧 INSERT 显式列出列名），触发器只拦 UPDATE，
+而旧代码从不 UPDATE 记录表。不需要恢复库。
+
+**现场怎么验（每条只要一条记录）**
+
+| 动作 | 期望 |
+|---|---|
+| MH 存一盘焊丝 | `mh_load_available_wire` **1 条**，`door_open_ts` / `door_close_ts` 都非空 |
+| OP 一轮存废取新 | `op_return_wire` 1 条 + `op_issue_available_wire` 1 条（领用与取出已合并），两条都有门时刻 |
+| MH 批量开格口 | `mh_open_slots_batch` **1 条**，`slot_count` = 实际格口数，`detail.slots` 列出格口号 |
+| 开门后再关门 | 不新增记录，那条开门记录的 `door_close_ts` 被回填 |
+| 自动返航连续失败 | `agv_move` **1 条**，`detail.count` 记次数 |
+
+**断言必须带时间窗**，否则会被历史数据误伤：
+
+```bash
+python dbcheck.py pairs  <app.db> --since "<动作前的 UTC 时刻>"
+python dbcheck.py verify <app.db> --expect expect/mh-load.json   # since_utc 已写进 expect
+```
+
+`pairs` 不带 `--since` 会扫全表，把口径优化前那 **854 条「无来源关门」**（`door_close_ts` 有值、
+`door_open_ts` 为空；10-09 已修掉，最晚一条 `2026-10-09 08:51:28`）报成不一致；
+`verify` 的两条门时刻检查已按 `expect.since_utc` 限定。
+
+**无指令开门仍要复验**：开一格再关，确认不再冒出 `is_uncommanded = 1`
+（10-09 那个误报的修复也在这批 DLL 里，一直没部署）。
+
+---
+
 ## 1. 通道分工（沿用上次现场结论）
 
 | 通道 | 用途 | 备注 |

@@ -61,7 +61,8 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
   原先「只能现场验」的几项（操作员存废取新、存料成功路径、真实控车）**已于 2026-09-29 现场实跑**。现场结果与避坑表见 `autotest/README.md` §8。注意柜体机上**没有 python、也没有 git，只有 .NET 8 运行时** —— `dbcheck.py` 要拉回本机跑，构建也只能在本机做再推包。
 - 按 `requirements/versions/0.2/现场自测清单.md` 的顺序验。
 
-- **2026-10-09 记录口径优化已本地实施**（未部署）：构建 0 警告、257/257 通过。改动含 schema（+3 列 + 只增不删触发器）、FlowEngine、SlotDoorActionLog、MhDoorOnlyService、AgvActionLog、记录页/导出、`autotest/dbcheck.py pairs` 与 expect 断言、四份文档。**现场待部署 + 待按新口径复核**（一次存料 1 条、批量开门 1 条、OP 存废取新 2 条、`is_uncommanded` 不出现）。
+- **2026-10-09 记录口径优化已本地实施**（未部署）：构建 0 警告、257/257 通过。改动含 schema（+3 列 + 只增不删触发器）、FlowEngine、SlotDoorActionLog、MhDoorOnlyService、AgvActionLog、记录页/导出、`autotest/dbcheck.py pairs` 与 expect 断言、四份文档。
+  **部署时除了 DLL 还要同步 `requirements/data-access-sql/sql-catalog/items/`**（新增 2 个写条目；应用按 `CabinetPaths` 从 exe 向上找仓库根再读 catalog，缺了会报「缺少 SQL 条目」并静默降级）。库不用手工动（启动自动补列建触发器）。回滚只换 DLL 就够。已在**现场库副本**上预演：9624 条真数据无损、触发器生效、记录页正常。**现场复核要点与断言命令见 `requirements/versions/0.2/autotest/README.md` §0.1**（`dbcheck.py pairs` 必须带 `--since`，否则会把口径优化前 854 条历史「无来源关门」报成不一致）。
 - 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对；10 月 9 日已同步部署产品及正式/mock catalog，故障组合仍待现场复核；见 requirements/versions/0.2/代码审查-20261008.md。
 
 ## 未决 / 已知限制

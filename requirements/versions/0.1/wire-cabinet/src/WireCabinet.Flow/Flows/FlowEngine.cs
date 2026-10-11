@@ -412,11 +412,14 @@ public sealed class FlowEngine
         var findings = new List<Finding>();
         var closed = _svc.Slot.CloseNextOpenDoor();
         if (closed is not null)
-        {
             Context!.Runtime["last_closed_slot_id"] = closed.Value.ToString(CultureInfo.InvariantCulture);
-            var closedAt = NowUtcText();
-            Context.Runtime[DoorCloseTsKey] = closedAt;
-        }
+
+        // 关门时刻不能只在 CloseNextOpenDoor() 返回格口时才记。现场是人工/硬件**先把门关掉**，
+        // 流程推进到本节点时 app_slot.door_state 已是 closed，该调用返回 null——本流程既然开过门
+        // （Runtime 里有 door_open_ts），这次关门就是它的关门时刻，漏记会让合并后的业务记录缺
+        // door_close_ts（MH 存料现场实测 10/10 条只有开门时刻）。
+        if (closed is not null || RuntimeValue(DoorOpenTsKey) is { Length: > 0 })
+            Context!.Runtime[DoorCloseTsKey] = NowUtcText();
 
         var (next, rf) = Route(node, "success");
         findings.AddRange(rf);

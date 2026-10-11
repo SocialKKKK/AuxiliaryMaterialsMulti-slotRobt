@@ -13,6 +13,14 @@ internal sealed class FakeSlotController : ISlotController
 {
     private readonly HashSet<long> _open = new();
 
+    /// <summary>
+    /// 复现现场前提：门在流程推进到「关门」节点**之前**就被现场/硬件关掉了
+    /// （真实实现里 <c>IsOpen</c> 取自 <c>app_slot.door_state</c>，此时已是 closed，
+    /// 于是 <see cref="CloseNextOpenDoor"/> 返回 null）。开门本身仍成功，
+    /// 所以流程照样往下走——差别只在关门节点拿不到格口。
+    /// </summary>
+    public bool DoorClosesItselfAfterOpen { get; set; }
+
     // 显式空 add/remove：测试不关心 Changed，也避免未使用事件的编译告警。
     public event EventHandler? Changed { add { } remove { } }
 
@@ -22,7 +30,8 @@ internal sealed class FakeSlotController : ISlotController
 
     public Task<bool> OpenDoorAsync(long slotId, CancellationToken ct = default)
     {
-        _open.Add(slotId);
+        if (!DoorClosesItselfAfterOpen)
+            _open.Add(slotId);
         return Task.FromResult(true);
     }
 

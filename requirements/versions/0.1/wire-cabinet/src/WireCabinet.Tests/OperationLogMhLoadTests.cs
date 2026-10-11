@@ -38,8 +38,11 @@ public class OperationLogMhLoadTests : IDisposable
     /// failingMesSync=true 时接上 DISCOEQPNO 同步并让它的 SET 固定失败，
     /// 用来复现「MES 报错」这一失败分支（mock 里难以用数据造出：规格查询与 SET
     /// 命中同一张表的同一行，能查到就一定能更新到）。
+    ///
+    /// slot 用于注入特定格口控制器（如「门已被先关掉」的现场前提）；默认只记账的假控制器。
     /// </summary>
-    private (SqliteDb Db, FlowEngine Engine) NewEngine(bool seedMesWire = true, bool failingMesSync = false)
+    private (SqliteDb Db, FlowEngine Engine) NewEngine(
+        bool seedMesWire = true, bool failingMesSync = false, FakeSlotController? slot = null)
     {
         var db = new SqliteDb(_dbPath);
         db.Initialize(recreate: true);
@@ -68,7 +71,7 @@ public class OperationLogMhLoadTests : IDisposable
             Catalog = catalog,
             AppDb = appDb,
             Mes = gateway,
-            Slot = new FakeSlotController(),
+            Slot = slot ?? new FakeSlotController(),
             OperationLog = new SqliteOperationLogSink(catalog, appDb),
             DiscoSync = failingMesSync
                 ? new WireDiscoEqpSyncService(
@@ -147,6 +150,32 @@ public class OperationLogMhLoadTests : IDisposable
         var close = row["door_close_ts"]?.ToString();
         Assert.False(string.IsNullOrWhiteSpace(open), "存料记录缺 door_open_ts。");
         Assert.False(string.IsNullOrWhiteSpace(close), "存料记录缺 door_close_ts。");
+        Assert.True(DateTime.Parse(close!) >= DateTime.Parse(open!), "door_close_ts 早于 door_open_ts。");
+    }
+
+    /// <summary>
+    /// 现场前提：门在流程推进到「关门」节点之前就被人工/硬件关掉了。
+    ///
+    /// 真实实现里 <c>IsOpen</c> 取自 <c>app_slot.door_state</c>，此时已是 closed，
+    /// 于是关门节点里的 <c>CloseNextOpenDoor()</c> 返回 null。修复前这种情形下
+    /// <c>door_close_ts</c> 会留空——2026-10-10 现场实测 MH 存料 10/10 条都只有
+    /// 开门时刻（假控制器默认把门一直保持「开着」，所以这条缺口此前没被拦住）。
+    /// </summary>
+    [Fact]
+    public void MhLoad_WhenDoorAlreadyClosedBeforeCloseNode_StillStampsDoorCloseTs()
+    {
+        var (db, engine) = NewEngine(slot: new FakeSlotController { DoorClosesItselfAfterOpen = true });
+
+        var last = RunToEnd(engine, Lot);
+        Assert.Equal("success", last.Outcome);
+        Assert.Equal("endSuccess", last.NodeId);
+
+        var row = db.Query("SELECT * FROM app_operation_log;", new Dictionary<string, object?>()).Rows.Single();
+
+        var open = row["door_open_ts"]?.ToString();
+        var close = row["door_close_ts"]?.ToString();
+        Assert.False(string.IsNullOrWhiteSpace(open), "存料记录缺 door_open_ts。");
+        Assert.False(string.IsNullOrWhiteSpace(close), "门已被先关掉时仍应记录 door_close_ts。");
         Assert.True(DateTime.Parse(close!) >= DateTime.Parse(open!), "door_close_ts 早于 door_open_ts。");
     }
 

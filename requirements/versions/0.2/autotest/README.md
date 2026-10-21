@@ -164,6 +164,18 @@ SSH 负责作证。
 会报不支持的认证类型）。车间网 `172.19.162.55:5900` 已验证可达；隧道另留 `127.0.0.1:15900` 备用。
 口令见仓库外 `_agv-probe/现场连接手册.md` §2（含现场口令，不入库）。
 
+**AI 侧抓屏（只抓不点，2026-10-21 建）**：柜体机上有计划任务 `WireCabinet-Shot`（`ht` 交互登录时运行）
+→ `wscript` 隐藏启动 `C:\autotest\shot-once.ps1` → 存 `C:\autotest\runs\shot\console.png`（1024×768，session 1）。
+
+```bash
+ssh agv-cabinet 'powershell -NoProfile -Command "Start-ScheduledTask -TaskName WireCabinet-Shot"'
+# 等 2 秒
+scp -O -i D:/code/_agv-probe/keys/site_key -P 122 ht@127.0.0.1:C:/autotest/runs/shot/console.png ./shot.png
+```
+
+它**不动鼠标键盘**，所以可以在你 VNC 连着、甚至人正站在柜前时用；要判断「界面渲染对不对」优先用它，
+不必为一个像素再写 UIA 场景（UIA 才会抢焦点）。
+
 ---
 
 ## 2. 已经验证到什么程度（本机 mock 实例）

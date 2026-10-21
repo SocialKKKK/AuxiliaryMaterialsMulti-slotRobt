@@ -121,7 +121,9 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 （RealVNC VNC Server 5.3.2 Enterprise 服务态，镜像 session 1；只报 `13/133/5/129`，必须 RealVNC Viewer；
 口令见 `_agv-probe/现场连接手册.md` §2）。SSH 落 session 0 看不到、点不到界面，所以
 **「看界面 / 手动触发」走 VNC，「取证据」走 SSH**，标准一轮 = VNC 点一下 → 等 1~2 秒 → 拉库断言；
-**跑 UIA 场景时 VNC 只连不点**（抢鼠标），重启 HMI 前确认柜前没人。细节见 `autotest/README.md` §1.1。
+**跑 UIA 场景时 VNC 只连不点**（抢鼠标），重启 HMI 前确认柜前没人。2026-10-21 已实况用过一轮
+（用户 Viewer 直连；AI 侧抓屏任务 `WireCabinet-Shot` 3.7 s/帧定状态）。三方分工与决策顺序见
+`autotest/README.md` §1.2，通道细节见 §1.1。
 
 **现场凭据（2026-09-28 现场确认）**：RCS `admin` / `密码见本机 _agv-probe/snap/site-appsettings.json（不入库）`（仓库里原先的 `admin/admin` 已失效）；
 车载路由 `172.19.162.55` = `admin` / `admin`（隧道 `tunnel.sh` 用它，`_agv-probe/askpass.sh`）。

@@ -113,9 +113,15 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 `dbcheck.py`（查 `app.db` 断言记录条数/门事件配对/待补偿/UTC 口径）、`README.md` 是现场 runbook。
 **优先级：能用数据与日志判定的就不点界面。** 动作分级沿用 `--execute` 的约定：
 
-- **完全自主**：构建、跑用例、读日志、取库断言、柜体 DI/DO 只读、RCS 干跑、查 MES 只读、截图。
+- **完全自主**：构建、跑用例、读日志、取库断言、柜体 DI/DO 只读、RCS 干跑、查 MES 只读、VNC 查看、截图。
 - **需人工放行**：部署到柜体机（可回滚）、**真实开门**、控车/回充、**写 MES 真库**、故障注入改库名。
 - **必须人在现场**：物理碰撞风险、门前有人、上下料、清场、急停。
+
+**VNC 通道（2026-10-21 确认可用，以后就这么用）**：车间网 `172.19.162.55:5900` → 柜体机控制台
+（RealVNC VNC Server 5.3.2 Enterprise 服务态，镜像 session 1；只报 `13/133/5/129`，必须 RealVNC Viewer；
+口令见 `_agv-probe/现场连接手册.md` §2）。SSH 落 session 0 看不到、点不到界面，所以
+**「看界面 / 手动触发」走 VNC，「取证据」走 SSH**，标准一轮 = VNC 点一下 → 等 1~2 秒 → 拉库断言；
+**跑 UIA 场景时 VNC 只连不点**（抢鼠标），重启 HMI 前确认柜前没人。细节见 `autotest/README.md` §1.1。
 
 **现场凭据（2026-09-28 现场确认）**：RCS `admin` / `密码见本机 _agv-probe/snap/site-appsettings.json（不入库）`（仓库里原先的 `admin/admin` 已失效）；
 车载路由 `172.19.162.55` = `admin` / `admin`（隧道 `tunnel.sh` 用它，`_agv-probe/askpass.sh`）。

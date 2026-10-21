@@ -1,0 +1,28 @@
+id: app.slot.mark_issue_state
+dialect: sqlite
+datasource: app.sqlite
+operation: write
+business_meaning: >-
+  OP 领用过程中的格口占用/隔离标记，防止「MES 已发料、本地还没取走/没关门」的格口
+  继续被 app.wire_inventory.find_matched_available 当成可用焊丝发给下一个人。
+  提交 MES 前标「领用中」；MES 成功后标「领用待取」；MES 明确报
+  「找不到物料…库存记录」时标「MES无库存」；MES 业务失败（如五分钟重复领用）恢复「可用」。
+  取料关门后由 app.slot.complete_issue_pickup 清空 wire_state，不需要本条目再清。
+sql: |
+  UPDATE app_slot
+  SET wire_state = :wire_state,
+      updated_at = datetime('now')
+  WHERE slot_id = :slot_id
+    AND biz_state = 'available_wire';
+params:
+  - name: slot_id
+  - name: wire_state
+    note: 只允许 领用中 / 领用待取 / 可用 / MES无库存；调用方在 HMI/流程层校验。
+outputs:
+  - rows_affected
+result_cardinality: write
+notes: |
+  - 这些是**本地流程占用标记**，不是 MES 返回的焊丝状态；MES 的 wire_state 仍以 bind_wire 写入的值为准。
+  - WHERE biz_state='available_wire' 防止误改已清空/归还格口。
+  - 标记不清 biz_state：格口仍显示「有料」，只是不再参与领用匹配；实物清走后由
+    assume_empty / complete_issue_pickup 统一清成 idle。

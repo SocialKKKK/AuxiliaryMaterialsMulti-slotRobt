@@ -254,8 +254,28 @@ public sealed class FlowEngine
         if (string.Equals(node.SqlId, "app.slot.complete_issue_pickup", StringComparison.OrdinalIgnoreCase))
             clearLotBeforePickup = _svc.DiscoSync?.TryGetAvailableWireLot(parameters.GetValueOrDefault("slot_id"));
 
+        var isIssueSubmit = string.Equals(node.Id, "submitWireIssue", StringComparison.OrdinalIgnoreCase);
+        var issueSlotId = isIssueSubmit ? ToLong(Field("queryMatchedAvailableWire", "slot_id")) : 0;
+        var issueOriginalState = isIssueSubmit
+            ? Field("queryMatchedAvailableWire", "wire_state") ?? WireAvailableState
+            : WireAvailableState;
+
+        // 先占位再提交 MES：即使提交过程中程序崩溃/断电，格口也不会继续被当成可用。
+        if (isIssueSubmit && issueSlotId > 0)
+            TryMarkIssueSlot(node, issueSlotId, IssueInProgressWireState, findings);
+
         var isMes = string.Equals(node.DataSource, "mes", StringComparison.OrdinalIgnoreCase);
         var result = isMes ? _svc.Mes.Run(item, parameters) : _svc.AppDb.Run(item, parameters);
+
+        if (isIssueSubmit && issueSlotId > 0)
+        {
+            if (!result.HasError)
+                TryMarkIssueSlot(node, issueSlotId, IssuePendingWireState, findings);
+            else if (IsNoStockRecordError(result.Error))
+                TryMarkIssueSlot(node, issueSlotId, MesNoStockWireState, findings);
+            else
+                TryMarkIssueSlot(node, issueSlotId, issueOriginalState, findings);
+        }
 
         Context!.NodeResults[node.Id] = result.First ?? new(StringComparer.OrdinalIgnoreCase);
 
@@ -505,6 +525,17 @@ public sealed class FlowEngine
     public const string OpIssueActionType = "op_issue_available_wire";
     public const string OpTakeActionType = "op_take_wire";
 
+    /// <summary>
+    /// OP 领用期间格口 wire_state 的本地占用/隔离标记（不是 MES 返回的焊丝状态）。
+    /// 这些值会被 app.wire_inventory.find_matched_available 排除，防止「MES 已发料、
+    /// 操作员没关门」的格口继续发给下一个人。
+    /// </summary>
+    public const string IssueInProgressWireState = "领用中";
+    public const string IssuePendingWireState = "领用待取";
+    public const string MesNoStockWireState = "MES无库存";
+    private const string WireAvailableState = "可用";
+    private const string MarkIssueStateSqlId = "app.slot.mark_issue_state";
+
     private const string MhBindWireSqlId = "app.slot.bind_wire";
 
     /// <summary>取出格口库存（关门后）——取出记录的落点，§3.1 第 4 项要求单独成条。</summary>
@@ -664,6 +695,36 @@ public sealed class FlowEngine
             Message = "取出后库存更新失败",
             ErrorInfo = result.Error,
         });
+    }
+
+    /// <summary>
+    /// MES 明确报「找不到物料…库存记录」：本地账上还有这盘料，MES 已经没有库存记录。
+    /// 这不是可重试的业务拒绝，必须把格口隔离，否则同一盘料会被每个操作员反复选中。
+    /// </summary>
+    private static bool IsNoStockRecordError(string? error) =>
+        !string.IsNullOrWhiteSpace(error)
+        && error.Contains("找不到物料", StringComparison.Ordinal)
+        && error.Contains("库存记录", StringComparison.Ordinal);
+
+    /// <summary>
+    /// 标记格口的本地领用占用/隔离状态。失败只告警，不改流程 outcome（与存取记录同一契约）。
+    /// </summary>
+    private void TryMarkIssueSlot(FlowNode node, long slotId, string wireState, List<Finding> findings)
+    {
+        var item = _svc.Catalog.Find(MarkIssueStateSqlId);
+        if (item is null)
+        {
+            findings.Add(Warn(node, "领用隔离", $"缺少 SQL 条目 {MarkIssueStateSqlId}，格口 {slotId} 未隔离。"));
+            return;
+        }
+
+        var result = _svc.AppDb.Run(item, new Dictionary<string, object?>
+        {
+            ["slot_id"] = slotId,
+            ["wire_state"] = wireState
+        });
+        if (result.HasError)
+            findings.Add(Warn(node, "领用隔离", $"格口 {slotId} 标记「{wireState}」失败：{result.Error}"));
     }
 
     /// <summary>

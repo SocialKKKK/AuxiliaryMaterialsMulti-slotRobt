@@ -1,0 +1,25 @@
+id: app.slot.list_issue_pending
+dialect: sqlite
+datasource: app.sqlite
+operation: read
+business_meaning: >-
+  查询处于 OP 领用占用/隔离状态的格口，供启动恢复提醒与 MES 对账页展示。
+  这些格口已被 app.wire_inventory.find_matched_available 排除，不再发给操作员；
+  需要物料员在 MH 页打开格口核对实物、关门清空后才会解除。
+sql: |
+  SELECT slot_id,
+         slot_no,
+         wire_lot_no,
+         wire_state,
+         updated_at
+  FROM app_slot
+  WHERE wire_state IN ('领用中', '领用待取', 'MES无库存')
+  ORDER BY slot_no;
+params: []
+outputs:
+  - slot_id
+  - slot_no
+  - wire_lot_no
+  - wire_state
+  - updated_at
+result_cardinality: 0..n

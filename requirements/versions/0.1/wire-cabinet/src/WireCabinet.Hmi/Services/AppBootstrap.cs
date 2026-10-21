@@ -138,6 +138,35 @@ public sealed class AppBootstrap : IDisposable
 
     public void Dispose() => (Hardware as IDisposable)?.Dispose();
 
+    /// <summary>
+    /// 处于 OP 领用占用/隔离状态的格口。启动恢复与 MES 对账页用它提示人工处理；
+    /// 这些格口已被 app.wire_inventory.find_matched_available 排除，不会发给操作员。
+    /// </summary>
+    public IReadOnlyList<IssuePendingSlot> ListIssuePendingSlots()
+    {
+        var item = Catalog.Find("app.slot.list_issue_pending");
+        if (item is null)
+            return Array.Empty<IssuePendingSlot>();
+
+        var result = AppDbGateway.Run(item, new Dictionary<string, object?>());
+        if (result.HasError)
+            return Array.Empty<IssuePendingSlot>();
+
+        var list = new List<IssuePendingSlot>();
+        foreach (var row in result.Rows)
+        {
+            if (!long.TryParse(row.GetValueOrDefault("slot_id")?.ToString(), out var slotId) || slotId <= 0)
+                continue;
+            list.Add(new IssuePendingSlot(
+                slotId,
+                row.GetValueOrDefault("slot_no")?.ToString() ?? "",
+                row.GetValueOrDefault("wire_lot_no")?.ToString(),
+                row.GetValueOrDefault("wire_state")?.ToString() ?? ""));
+        }
+        return list;
+    }
+
+
     /// <summary>去掉从旧版配置整段粘贴时误带的 OracleConnection= 前缀。</summary>
     private static string NormalizeMesConnectionString(string? raw)
     {
@@ -152,6 +181,8 @@ public sealed class AppBootstrap : IDisposable
         return s;
     }
 }
+
+public sealed record IssuePendingSlot(long SlotId, string SlotNo, string? WireLotNo, string WireState);
 
 public sealed class UnconfiguredMesGateway : IMesGateway
 {

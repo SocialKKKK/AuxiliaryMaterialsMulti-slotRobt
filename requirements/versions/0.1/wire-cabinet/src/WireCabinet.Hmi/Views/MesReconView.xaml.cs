@@ -48,6 +48,17 @@ public partial class MesReconView : UserControl
     private void RefreshInterrupts()
     {
         var sb = new StringBuilder();
+
+        var pending = App.Bootstrap.ListIssuePendingSlots();
+        if (pending.Count > 0)
+        {
+            sb.AppendLine("[格口领用隔离]");
+            foreach (var slot in pending)
+                sb.AppendLine($"格口 {slot.SlotNo}，批号 {slot.WireLotNo ?? "—"}，状态 {slot.WireState}");
+            sb.AppendLine("已从可领列表排除；请到 MH 页打开该格口核对/清空，清快照不会解除隔离。");
+            sb.AppendLine();
+        }
+
         var mh = App.Bootstrap.InterruptedLoad.TryGet();
         if (mh is not null)
         {
@@ -64,7 +75,7 @@ public partial class MesReconView : UserControl
             sb.AppendLine("[OP 领用中断]");
             sb.AppendLine($"格口 {op.SlotNo}，批号 {op.WireLotNo}");
             sb.AppendLine($"submit_issue_done={op.SubmitIssueDone}，pickup_done={op.PickupDone}，mes_disco_done={op.MesDiscoDone}");
-            sb.AppendLine("建议：重新走 OP 或手工补 NULL/清库后清除快照。");
+            sb.AppendLine("请到 MH 页打开该格口核对/清空；清除快照不会解除格口隔离。");
         }
 
         InterruptText.Text = sb.Length == 0 ? "（无中断快照）" : sb.ToString().TrimEnd();
@@ -158,7 +169,7 @@ public partial class MesReconView : UserControl
     {
         if (App.Bootstrap.OpInterruptedIssue.TryGet() is null)
             return;
-        if (MessageBox.Show("确认 OP 中断已人工核对并清除快照？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (MessageBox.Show("清除快照不会清空格口，也不会解除隔离。请确认已在 MH 页核对该格口并清空，仍要清除？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         App.Bootstrap.MesReconAudit.Append("clear_op_snapshot", null, "人工清除 OP 中断快照");
         App.Bootstrap.OpInterruptedIssue.Clear();

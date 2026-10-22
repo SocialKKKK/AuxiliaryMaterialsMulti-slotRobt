@@ -238,10 +238,33 @@ public sealed class AgvServices : IDisposable
             if (station is null)
                 return (false, "请选择已启用的作业站。");
 
-            return await MoveToStationCoreAsync(station.RcsDestination, ct).ConfigureAwait(false);
+            var resolvedBefore = station.RcsDestination;
+            var first = await MoveToStationCoreAsync(resolvedBefore, ct).ConfigureAwait(false);
+            if (first.Ok || !IsStationMissing(first.Message))
+                return first;
+
+            // 地图在运行中被推送过：按名称重解析一次，站点号变了就用新号重试一次。
+            _stationNames?.Invalidate();
+            _stationNamesResolved = false;
+            await EnsureStationNamesAsync(ct).ConfigureAwait(false);
+
+            var refreshed = Stations.EnabledWorkStations.FirstOrDefault(s =>
+                string.Equals(s.Code, stationCode, StringComparison.OrdinalIgnoreCase));
+            if (refreshed is null || refreshed.RcsDestination == resolvedBefore || _stationNames?.LastError is not null)
+                return first;
+
+            var retry = await MoveToStationCoreAsync(refreshed.RcsDestination, ct).ConfigureAwait(false);
+            return retry.Ok
+                ? (true, $"{retry.Message}（站点号已按名称自动更新为 {refreshed.RcsDestination}）")
+                : retry;
         }
         finally { _commands.Release(); }
     }
+
+    private static bool IsStationMissing(string? message) =>
+        !string.IsNullOrEmpty(message)
+        && (message.Contains("目的地站点不存在", StringComparison.Ordinal)
+            || message.Contains("站点不存在", StringComparison.Ordinal));
 
     private async Task<(bool Ok, string Message)> MoveToStationCoreAsync(int destination, CancellationToken ct)
     {
@@ -318,7 +341,7 @@ public sealed class AgvServices : IDisposable
             var ready = AgvReadinessPolicy.Evaluate(_lastSnapshot.Vehicle, _lastSnapshot.Order, doors,
                 _options.StateThresholds, false, ControlLoop?.CallInProgress == true);
             if (!ready.CanAcceptOrder) return (false, ready.Reason);
-            var order = await _client!.CreateChargeOrderAsync(_options.ChargeDestination, ct).ConfigureAwait(false);
+            var order = await CreateChargeOrderWithStationRefreshAsync(ct).ConfigureAwait(false);
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Charge);
             Charge.RememberReturnDestinationOnChargeDispatch(LastPosition);
             await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
@@ -330,6 +353,25 @@ public sealed class AgvServices : IDisposable
         {
             _agvLog.RecordCommand(AgvActionLog.AgvCharge, "下充电单（自动回充）", ok: false, error: ex.Message);
             return (false, ex.Message);
+        }
+    }
+
+    /// <summary>充电单遇到“目的地站点不存在”时，按名称重解析一次再重试（地图运行中被推送）。</summary>
+    private async Task<CreateOrderResult> CreateChargeOrderWithStationRefreshAsync(CancellationToken ct)
+    {
+        var destination = _options.ChargeDestination;
+        try
+        {
+            return await _client!.CreateChargeOrderAsync(destination, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsStationMissing(ex.Message))
+        {
+            _stationNames?.Invalidate();
+            _stationNamesResolved = false;
+            await EnsureStationNamesAsync(ct).ConfigureAwait(false);
+            if (_stationNames?.LastError is not null || _options.ChargeDestination == destination)
+                throw;
+            return await _client!.CreateChargeOrderAsync(_options.ChargeDestination, ct).ConfigureAwait(false);
         }
     }
 

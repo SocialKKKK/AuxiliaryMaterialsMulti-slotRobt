@@ -125,7 +125,7 @@ public partial class AgvView : UserControl
         DisableAllMovementControls();
         try
         {
-            var (ok, msg) = await Agv.MoveToStationAsync(station.RcsDestination);
+            var (ok, msg) = await Agv.MoveToStationByCodeAsync(station.Code);
             ApplyDispatchResult(ok, msg);
         }
         catch

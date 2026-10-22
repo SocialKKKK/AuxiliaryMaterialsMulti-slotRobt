@@ -16,6 +16,8 @@ internal sealed class FakeAgvClient : IAgvDispatchClient
     public Func<Task>? BeforeMove { get; set; }
     public List<int> Moves { get; } = [];
     public List<string> Cancellations { get; } = [];
+    public List<int> ChargeDestinations { get; } = [];
+    public List<MapStationDto> MapStations { get; } = [];
     public int Charges { get; private set; }
     public DateTime? TokenObtainedAtUtc => DateTime.UtcNow;
     public Task LoginAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -24,15 +26,20 @@ internal sealed class FakeAgvClient : IAgvDispatchClient
     public Task<VehicleSnapshot> GetVehicleSnapshotAsync(string? deviceKey = null, CancellationToken cancellationToken = default) => SnapshotError is null ? Task.FromResult(Snapshot) : Task.FromException<VehicleSnapshot>(SnapshotError);
     public Task<OrderDetailDto> GetOrderDetailAsync(string orderId, CancellationToken cancellationToken = default) => DetailError is null ? Task.FromResult(Detail) : Task.FromException<OrderDetailDto>(DetailError);
     public Task<IReadOnlyList<VehicleListItemDto>> GetVehiclesAsync(int[]? deviceIds = null, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<VehicleListItemDto>>([]);
+    public Task<IReadOnlyList<MapStationDto>> GetMapStationsAsync(int mapId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<MapStationDto>>(MapStations);
     public async Task<CreateOrderResult> CreateMoveOrderAsync(int destination, int? mapId = null, string? deviceKey = null, string? orderName = null, CancellationToken cancellationToken = default)
     {
         if (BeforeMove is not null) await BeforeMove();
         Moves.Add(destination);
         return new() { OrderId = "move-" + Moves.Count };
     }
-    public Task<CreateOrderResult> CreateChargeOrderAsync(CancellationToken cancellationToken = default)
+    public Task<CreateOrderResult> CreateChargeOrderAsync(CancellationToken cancellationToken = default) =>
+        CreateChargeOrderAsync(0, cancellationToken);
+    public Task<CreateOrderResult> CreateChargeOrderAsync(int destination, CancellationToken cancellationToken = default)
     {
         Charges++;
+        ChargeDestinations.Add(destination);
         return Task.FromResult(new CreateOrderResult { OrderId = "charge-" + Charges });
     }
     public Task CancelOrderAsync(string orderId, CancellationToken cancellationToken = default)

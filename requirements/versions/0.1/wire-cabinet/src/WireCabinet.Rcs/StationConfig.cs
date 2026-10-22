@@ -7,7 +7,10 @@ public sealed class WorkStationConfig
 {
     public string Code { get; init; } = "";
     public string Name { get; init; } = "";
-    public int RcsDestination { get; init; }
+    /// <summary>配置/缓存值；配置了 <see cref="RcsStationName"/> 时由运行时解析覆盖。</summary>
+    public int RcsDestination { get; set; }
+    /// <summary>RCS 地图上的站点名称；非空时启动后按名称解析出当前站点号。</summary>
+    public string? RcsStationName { get; init; }
     public bool Enabled { get; init; } = true;
     public List<string> AllowedRoles { get; init; } = new();
     public List<string> AllowedWireFlows { get; init; } = new();
@@ -17,7 +20,8 @@ public sealed class ChargeStationConfig
 {
     public string Code { get; init; } = "";
     public string Name { get; init; } = "";
-    public int RcsDestination { get; init; }
+    public int RcsDestination { get; set; }
+    public string? RcsStationName { get; init; }
     public bool Enabled { get; init; } = true;
 }
 
@@ -59,6 +63,7 @@ public sealed class StationConfiguration
                 Code = Yaml.Str(ws, "station_code") ?? Yaml.Str(ws, "id") ?? "",
                 Name = Yaml.Str(ws, "display_name") ?? Yaml.Str(ws, "name") ?? "",
                 RcsDestination = ParseInt(Yaml.Str(ws, "rcs_destination")),
+                RcsStationName = Yaml.Str(ws, "rcs_station_name"),
                 Enabled = enabled,
                 AllowedRoles = Yaml.AsList(Yaml.Get(ws, "allowed_roles"))?.Select(x => x.ToString()!).ToList() ?? new(),
                 AllowedWireFlows = Yaml.AsList(Yaml.Get(ws, "allowed_wire_flows"))?.Select(x => x.ToString()!).ToList() ?? new()
@@ -73,6 +78,7 @@ public sealed class StationConfiguration
                 Code = Yaml.Str(charge, "station_code") ?? "",
                 Name = Yaml.Str(charge, "display_name") ?? "充电点",
                 RcsDestination = ParseInt(Yaml.Str(charge, "rcs_destination")),
+                RcsStationName = Yaml.Str(charge, "rcs_station_name"),
                 Enabled = !string.Equals(Yaml.Str(charge, "enabled"), "false", StringComparison.OrdinalIgnoreCase)
             };
         }

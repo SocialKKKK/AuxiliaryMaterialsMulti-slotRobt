@@ -20,6 +20,8 @@ public sealed class AgvServices : IDisposable
     /// <summary>控车与回充的记录（0.2 §3.1 第 8 项）。</summary>
     private readonly AgvActionLog _agvLog;
     private IAgvDispatchClient? _client;
+    private StationNameResolver? _stationNames;
+    private bool _stationNamesResolved;
     private VehicleSnapshot _lastSnapshot = new();
     private bool _startupCleanupDone;
     private readonly SemaphoreSlim _commands = new(1, 1);
@@ -97,6 +99,7 @@ public sealed class AgvServices : IDisposable
         try
         {
             _client = AgvDispatchClient.Create(_options);
+            _stationNames = new StationNameResolver(_client, _options.DefaultMapId);
             ControlLoop = new AgvControlLoop(_client, _options, doors, _orderGate);
             Move = new ManualMoveService(_client, _options, slots, ControlLoop);
             Charge = new LowBatteryChargeService(_client, _options, _thresholds, _orderGate, Stations, _agvLog, slots);
@@ -114,6 +117,7 @@ public sealed class AgvServices : IDisposable
         WireCabinet.Data.IOperationLogSink? operationLog = null)
     {
         _client = client;
+        _stationNames = new StationNameResolver(client, options.DefaultMapId);
         _options = options;
         _thresholds = thresholds;
         _slots = slots;
@@ -148,6 +152,7 @@ public sealed class AgvServices : IDisposable
             await _client.LoginAsync(ct).ConfigureAwait(false);
             IsConnected = true;
             LastError = null;
+            await EnsureStationNamesAsync(ct).ConfigureAwait(false);
             await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
             return IsConnected;
         }
@@ -156,6 +161,26 @@ public sealed class AgvServices : IDisposable
             IsConnected = false;
             LastError = ex.Message;
             return false;
+        }
+    }
+
+    private async Task EnsureStationNamesAsync(CancellationToken ct)
+    {
+        if (_stationNames is null || _stationNamesResolved)
+            return;
+
+        try
+        {
+            if (await _stationNames.ResolveAsync(Stations, ct).ConfigureAwait(false))
+            {
+                _stationNamesResolved = true;
+                if (Stations.ChargeStation is { RcsDestination: > 0 } charge)
+                    _options.ChargeDestination = charge.RcsDestination;
+            }
+        }
+        catch
+        {
+            // 地图读取失败不阻断连接；保留配置里的数字号，下次连接再试。
         }
     }
 
@@ -199,13 +224,34 @@ public sealed class AgvServices : IDisposable
         finally { _commands.Release(); }
     }
 
+    /// <summary>按作业站编码发车：先连上并解析站点名称，再用解析后的当前站点号下单。</summary>
+    public async Task<(bool Ok, string Message)> MoveToStationByCodeAsync(string stationCode, CancellationToken ct = default)
+    {
+        await _commands.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (!IsConnected && !await ConnectCoreAsync(ct).ConfigureAwait(false))
+                return (false, LastError ?? "RCS 登录失败");
+
+            var station = Stations.EnabledWorkStations.FirstOrDefault(s =>
+                string.Equals(s.Code, stationCode, StringComparison.OrdinalIgnoreCase));
+            if (station is null)
+                return (false, "请选择已启用的作业站。");
+
+            return await MoveToStationCoreAsync(station.RcsDestination, ct).ConfigureAwait(false);
+        }
+        finally { _commands.Release(); }
+    }
+
     private async Task<(bool Ok, string Message)> MoveToStationCoreAsync(int destination, CancellationToken ct)
     {
         if (Move is null) return (false, "RCS 未就绪");
-        if (!Stations.EnabledWorkStations.Any(s => s.RcsDestination == destination))
-            return (false, "请选择已启用的作业站。");
         if (!IsConnected && !await ConnectCoreAsync(ct).ConfigureAwait(false))
             return (false, LastError ?? "RCS 登录失败");
+        if (_stationNames?.LastError is { Length: > 0 } nameError)
+            return (false, nameError);
+        if (!Stations.EnabledWorkStations.Any(s => s.RcsDestination == destination))
+            return (false, "请选择已启用的作业站。");
 
         await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
         if (!IsConnected) return (false, LastError ?? "RCS 状态刷新失败。");
@@ -252,6 +298,8 @@ public sealed class AgvServices : IDisposable
 
         await RefreshStatusCoreAsync(ct).ConfigureAwait(false);
         if (!IsConnected) return (false, LastError ?? "RCS 状态刷新失败。");
+        if (_stationNames?.LastError is { Length: > 0 } chargeNameError)
+            return (false, chargeNameError);
         if (!CanPlaceChargeOrder || Move?.WaitingForChargeDeparture == true)
             return (false, _orderGate.GetBlockReason(_lastSnapshot, AgvPendingOrderKind.Charge) ?? "已有移动请求，请等待或取消。");
 
@@ -270,7 +318,7 @@ public sealed class AgvServices : IDisposable
             var ready = AgvReadinessPolicy.Evaluate(_lastSnapshot.Vehicle, _lastSnapshot.Order, doors,
                 _options.StateThresholds, false, ControlLoop?.CallInProgress == true);
             if (!ready.CanAcceptOrder) return (false, ready.Reason);
-            var order = await _client!.CreateChargeOrderAsync(ct).ConfigureAwait(false);
+            var order = await _client!.CreateChargeOrderAsync(_options.ChargeDestination, ct).ConfigureAwait(false);
             _orderGate.RecordPlacedOrder(order.OrderId, AgvPendingOrderKind.Charge);
             Charge.RememberReturnDestinationOnChargeDispatch(LastPosition);
             await RefreshStatusCoreAsync(ct).ConfigureAwait(false);

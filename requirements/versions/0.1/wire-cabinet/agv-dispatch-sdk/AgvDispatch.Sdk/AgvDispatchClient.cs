@@ -94,6 +94,19 @@ public sealed class AgvDispatchClient : IAgvDispatchClient, IDisposable
         throw new AgvDispatchException("Vehicle list result is empty.", null, wrapped?.Code, wrapped?.Message, raw);
     }
 
+    public async Task<IReadOnlyList<MapStationDto>> GetMapStationsAsync(int mapId, CancellationToken cancellationToken = default)
+    {
+        var raw = await SendAuthorizedAndReadAsync(
+            () => CreateAuthorizedRequest(HttpMethod.Get, $"api/imap/v1/mapInfo/stations/{mapId}"),
+            cancellationToken).ConfigureAwait(false);
+
+        var wrapped = JsonSerializer.Deserialize<DispatchApiResponse<List<MapStationDto>>>(raw, AgvDispatchJson.SerializerOptions);
+        if (wrapped?.Result != null)
+            return wrapped.Result;
+
+        throw new AgvDispatchException("Map station list result is empty.", null, wrapped?.Code, wrapped?.Message, raw);
+    }
+
     public async Task<OrderDetailDto> GetOrderDetailAsync(string orderId, CancellationToken cancellationToken = default)
     {
         var raw = await SendAuthorizedAndReadAsync(
@@ -139,8 +152,15 @@ public sealed class AgvDispatchClient : IAgvDispatchClient, IDisposable
         return await PostCreateOrderAsync(body, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<CreateOrderResult> CreateChargeOrderAsync(CancellationToken cancellationToken = default)
+    public Task<CreateOrderResult> CreateChargeOrderAsync(CancellationToken cancellationToken = default) =>
+        CreateChargeOrderAsync(_options.ChargeDestination, cancellationToken);
+
+    /// <summary>用调用方解析后的充电站点号下充电单（站点名称解析用）。</summary>
+    public async Task<CreateOrderResult> CreateChargeOrderAsync(int destination, CancellationToken cancellationToken = default)
     {
+        if (destination <= 0)
+            throw new ArgumentException("destination must be greater than 0.", nameof(destination));
+
         var body = new CreateMoveOrderRequest
         {
             OrderName = _options.DefaultOrderName,
@@ -150,7 +170,7 @@ public sealed class AgvDispatchClient : IAgvDispatchClient, IDisposable
                 new MissionItemDto
                 {
                     Type = "move",
-                    Destination = _options.ChargeDestination,
+                    Destination = destination,
                     MapId = _options.DefaultMapId
                 },
                 new MissionItemDto

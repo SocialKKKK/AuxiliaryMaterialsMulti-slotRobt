@@ -32,7 +32,8 @@ work_stations:
   # 示例 A：仅物料员 MH — 存可用焊丝 + 本柜格口维护
   - station_code: WS_MH_STORE
     display_name: 物料间焊丝柜（MH）
-    rcs_destination: 643                    # 2026-10-22 地图更新（10-20 15:00 推送新图）：物料多仓位2停靠点 522→643（522 已不在图上）
+    rcs_destination: 643                    # 2026-10-22 地图更新：物料多仓位2停靠点 522→643（522 已不在图上）
+    rcs_station_name: "物料多仓位2停靠点"    # 权威：启动时按名称从当前地图解析站点号，643 仅作兜底/缓存
     enabled: true
     cabinet_id: 1
     allowed_roles: [MH]
@@ -48,6 +49,7 @@ work_stations:
   - station_code: WS_OP_ISSUE
     display_name: 线边焊丝柜（OP）
     rcs_destination: 597                    # 现场填写；Sample DestinationStationId
+    rcs_station_name: "站点597"              # 按名称解析，597 仅作兜底/缓存
     enabled: true
     cabinet_id: 2
     allowed_roles: [OP]
@@ -70,6 +72,7 @@ charge_station:
   station_code: CHG_WIRE_01
   display_name: 物料多仓位充电点
   rcs_destination: 520
+  rcs_station_name: "物料多仓位充电点"      # 按名称解析，520 仅作兜底/缓存
   enabled: true
   charge_action_id: 78
   occupied_check:

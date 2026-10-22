@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
@@ -104,6 +104,8 @@ public partial class App : Application
             {
                 await MhDoors.NotifySlotsClosedAsync(closed);
                 Bootstrap.FlowSlots.Reload();
+                // 中断领用：门已关且过了宽限期就自动清库，不再要求物料员专门开这一格。
+                OpInterruptedIssueAutoComplete.TryRun();
             }
             else
                 MhDoors.TryAutoEndDoorOnlySession();

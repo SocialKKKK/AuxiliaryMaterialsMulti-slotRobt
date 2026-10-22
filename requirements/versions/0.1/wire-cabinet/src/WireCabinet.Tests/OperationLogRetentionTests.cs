@@ -41,6 +41,17 @@ public class OperationLogRetentionTests
         + @"\s+and\s+ts\s*=\s*:ts\s+and\s+result\s*=\s*'失败'\s*;$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>
+    /// 放行的写法之三（2026-10-22）：中断领用自动收尾时，只给「同一格口+同一批号+最近一条+
+    /// 成功且无门时刻」的领用记录补 detail 说明。仍不改任何业务事实，门时刻保持 NULL。
+    /// </summary>
+    private static readonly Regex AllowedAutoPickupDetail = new(
+        @"^update\s+app_operation_log\s+set\s+detail\s*=\s*:detail\s+where\s+id\s*=\s*\(\s*select\s+id\s+from\s+app_operation_log"
+        + @"\s+where\s+action_type\s*=\s*'op_issue_available_wire'\s+and\s+slot_no\s*=\s*:slot_no\s+and\s+lot_no\s*=\s*:lot_no"
+        + @"\s+and\s+result\s*=\s*'成功'\s+and\s+door_close_ts\s+is\s+null\s+order\s+by\s+id\s+desc\s+limit\s+1\s*\)"
+        + @"\s+and\s+\(\s*detail\s+is\s+null\s+or\s+detail\s*=\s*''\s*\)\s*;$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     [Fact]
     public void RecordTable_IsNeverUpdatedOrDeleted()
     {
@@ -69,7 +80,9 @@ public class OperationLogRetentionTests
         {
             var end = collapsed.IndexOf(';', match.Index);
             var statement = (end < 0 ? collapsed[match.Index..] : collapsed[match.Index..(end + 1)]).Trim();
-            if (!AllowedDoorTsBackfill.IsMatch(statement) && !AllowedDetailUpdate.IsMatch(statement))
+            if (!AllowedDoorTsBackfill.IsMatch(statement)
+                && !AllowedDetailUpdate.IsMatch(statement)
+                && !AllowedAutoPickupDetail.IsMatch(statement))
                 return true;
         }
 
@@ -107,6 +120,12 @@ public class OperationLogRetentionTests
         false)]
     [InlineData(
         "UPDATE app_operation_log SET detail = :detail WHERE action_type = :action_type AND ts = :ts AND result = '失败';",
+        false)]
+    [InlineData(
+        "UPDATE app_operation_log SET detail = :detail WHERE id = ( SELECT id FROM app_operation_log"
+        + " WHERE action_type = 'op_issue_available_wire' AND slot_no = :slot_no AND lot_no = :lot_no"
+        + " AND result = '成功' AND door_close_ts IS NULL ORDER BY id DESC LIMIT 1 )"
+        + " AND (detail IS NULL OR detail = '');",
         false)]
     [InlineData("UPDATE app_operation_log SET detail = :detail WHERE id = 1;", true)]
     [InlineData("INSERT INTO app_operation_log (id) VALUES (1);", false)]

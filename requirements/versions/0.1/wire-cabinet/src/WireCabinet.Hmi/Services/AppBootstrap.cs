@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using Microsoft.Extensions.Configuration;
 using WireCabinet.Core;
@@ -161,9 +162,61 @@ public sealed class AppBootstrap : IDisposable
                 slotId,
                 row.GetValueOrDefault("slot_no")?.ToString() ?? "",
                 row.GetValueOrDefault("wire_lot_no")?.ToString(),
-                row.GetValueOrDefault("wire_state")?.ToString() ?? ""));
+                row.GetValueOrDefault("wire_state")?.ToString() ?? "",
+                ParseUtc(row.GetValueOrDefault("updated_at")?.ToString())));
         }
         return list;
+    }
+
+    /// <summary>
+    /// 程序中断后按「门已关」自动收尾：清空格口 + 给原记录补 detail 说明 + 清中断快照。
+    /// 不补门时刻（事实未知），也不改任何业务字段。
+    /// </summary>
+    public bool CompleteInterruptedIssuePickup(IssuePendingSlot pending, DateTime observedUtc)
+    {
+        var complete = Catalog.Find("app.slot.complete_issue_pickup");
+        if (complete is null)
+            return false;
+
+        var result = AppDbGateway.Run(complete, new Dictionary<string, object?>
+        {
+            ["slot_id"] = pending.SlotId
+        });
+        if (result.HasError || result.RowsAffected <= 0)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(pending.WireLotNo))
+        {
+            var mark = Catalog.Find("app.operation_log.mark_auto_pickup");
+            if (mark is not null)
+            {
+                AppDbGateway.Run(mark, new Dictionary<string, object?>
+                {
+                    ["detail"] = $"程序中断；{observedUtc.ToLocalTime():yyyy-MM-dd HH:mm} 启动巡检按门已关自动完成清库（原门时刻未记录）",
+                    ["slot_no"] = pending.SlotNo,
+                    ["lot_no"] = pending.WireLotNo
+                });
+            }
+        }
+
+        var record = OpInterruptedIssue.TryGet();
+        if (record is not null && record.SlotId == pending.SlotId)
+        {
+            OpInterruptedIssue.UpdateProgress(pickupDone: true);
+            OpInterruptedIssue.Clear();
+        }
+
+        return true;
+    }
+
+    private static DateTime? ParseUtc(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        return DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt)
+            ? dt
+            : null;
     }
 
 
@@ -182,7 +235,12 @@ public sealed class AppBootstrap : IDisposable
     }
 }
 
-public sealed record IssuePendingSlot(long SlotId, string SlotNo, string? WireLotNo, string WireState);
+public sealed record IssuePendingSlot(
+    long SlotId,
+    string SlotNo,
+    string? WireLotNo,
+    string WireState,
+    DateTime? UpdatedAt);
 
 public sealed class UnconfiguredMesGateway : IMesGateway
 {

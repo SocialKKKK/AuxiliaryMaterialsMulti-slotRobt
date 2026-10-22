@@ -21,7 +21,7 @@
 ```bash
 cd requirements/versions/0.1/wire-cabinet
 dotnet build WireCabinet.sln                        # 期望 0 警告 0 错误
-dotnet test WireCabinet.sln                         # 期望 271 全通过（253 Core + 18 Windows HMI）
+dotnet test WireCabinet.sln                         # 期望 279 全通过（261 Core + 18 Windows HMI）
 src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（单一实例）
 ```
 
@@ -72,6 +72,7 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
   ⚠ `dbcheck.py --since` **必须用空格格式**（`"2026-10-11 08:20:00"`）：传 ISO `T` 会被字符串比较静默推到次日（同一份库实测 820 vs 914）。
   ⚠ 本机 git-bash **缺 `pgrep`/`pkill`**：`_agv-probe/connect.sh` 因此认不出已有隧道、`--stop` 也失效，需手动建 askpass 并直接起 `tunnel.sh`。
 - **2026-10-21 现场 F-A03 幽灵料修复（2026-10-21 15:00 已现场部署）**：10-13 15:11:38 王莉在 F-A03 领 `MC2680I0-02-0025` 后未关门离开，门到 16:45 才关，流程未走到 `complete_issue_pickup`，格口一直 `available_wire`；之后 20 次领用被 MES 以 `ORA-20007 找不到物料…库存记录` 拒。10-21 11:43 现场用 MH 开门清掉旧批号（`mh_take_wire` 1404），11:53 王尧补入 `9022278626-7673`（φ50）；11:53–12:01 全柜换料后旧批号已清零。代码侧新增 `app.slot.mark_issue_state` / `app.slot.list_issue_pending`，`find_matched_available` 排除 `领用中/领用待取/MES无库存`；启动恢复不再只清快照。**Release 0 警告、271/271（253 Core + 18 HMI）通过，15:00 已部署**（PID 7548，Session 1，窗口截图核对；备份 `C:\autotest\backup\wirecabinet-20261021-1455`）；`WireCabinet-StartHmi` 的 `ExecutionTimeLimit` 由 PT12H 改为 PT0S，避免夜间被计划任务杀掉。
+- **2026-10-22 站点变更与中断领用自动收尾（20:38 已部署）**：RCS 在 10-20 15:00 推送新图后 522 不存在，MH 停靠点实为 **643**（642 是取料点）；柜体机与仓库 `stations.yaml` 已改，17:01/19:19 两次发往 643 成功。R-C01 领用中断（MES 已发、门时刻空）不再要求 MH 开门核对：启动/巡检按「领用待取 + 门已关 + 标记超 10 分钟」自动清库并在原记录 `detail` 留痕（新 SQL `app.operation_log.mark_auto_pickup`），**现场已自愈、启动无弹窗**。Release 0/0、279/279（261 Core + 18 HMI）。门事件日志、「待取料」标识仍未做。
 - 10 月 8 日追加代码审查：隔离复现的 5 项缺陷已修复（DI 未知放行、OP 强制关门确认、库存读错触发 MES CLEAR、CLEAR 无归属校验、补偿并发重复）；新增 28 项回归，234/234 通过、1024×768 截图核对；10 月 9 日已同步部署产品及正式/mock catalog，故障组合仍待现场复核；见 requirements/versions/0.2/代码审查-20261008.md。
 
 
@@ -89,7 +90,7 @@ src/WireCabinet.Hmi/bin/Debug/net8.0-windows/WireCabinet.Hmi.exe   # 启动（�
 | **2 条 `成功` 记录门时刻全空（2026-10-19 发现）** | id 589（F-A03 10-13 15:11:38 OP 领用）**已定位：王莉领料后未关门离开，门到 16:45 才被关，流程未走到 `complete_issue_pickup`**；id 764（F-B01 10-14 11:39:07 OP 归还）仍未定位。同窗口另 23 条门时刻全空属正常（MES 拒单未走到开门） |
 | **F-A03 的 `MC2680I0-02-0025` 幽灵料（2026-10-21 已定位/已清账）** | **已推翻“MES/工艺数据问题”结论（2026-10-21）**：10-13 15:11:38 王莉领用成功后未关门，本地清库未完成，格口一直 `available_wire`；MES 已无库存，之后 20 次领用被拒。10-21 11:43 现场 MH 开门清掉旧批号（`mh_take_wire` 1404），11:53 王尧补入 `9022278626-7673`（φ50）。**2026-10-21 15:00 已现场部署**：`submitWireIssue` 前/后标 `领用中/领用待取`、MES 无库存标 `MES无库存`，`find_matched_available` 排除；启动恢复不再只清快照。**剩余 P1**：记录页未加“待取料”标识；门开超时提醒未做 |
 | **订单门与 RCS 订单状态可能不同步** | 10 月 8 日已修，10 月 9 日已部署：兼容 `done_time`，取消后等 RCS 释放，详情失败显示原因且保留联锁；不因车辆订单为空强清队列。实际取消/释放仍待现场复核 |
-| **充电态无法手动离站/自动返航** | 10 月 9 日已部署，CHARGING 发车按钮可用；旧物料间 596 已不在地图 22，本地配置已按现场确认改为 522（`f7cbf3e`）。未取得 522 配置的部署收据与成功返航证据；实际离站/返航待验，阈值仍 30%/90% |
+| **充电态无法手动离站/自动返航** | 10 月 9 日已部署，CHARGING 发车按钮可用；旧物料间 596、后来的 522 都已随 10-20 地图推送失效，**2026-10-22 已改为 643 并验证两次往返**（642 是取料点）。实际离站/返航仍待验，阈值仍 30%/90% |
 | 导出 Excel 的落盘 | 2026-09-29 现场已验证：`oplog-real.xlsx` 9040 B 落盘 + `export_operation_log` 留痕。**只剩人工用 Excel 打开确认一次** |
 | 归档/备份的周期与存放 | 做法已定，参数待现场填实（`运维说明-归档与备份.md`） |
 | 两套 FlowEngine | 产品一份、`validation/wire-flow-lab` 一份 fork（已漂移），长期需收拢 |

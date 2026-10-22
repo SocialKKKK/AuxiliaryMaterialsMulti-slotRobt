@@ -25,6 +25,12 @@ public static class OpInterruptedIssueStartupAlert
             pending = App.Bootstrap.ListIssuePendingSlots();
         }
 
+        // 2026-10-22：能自动收尾的先自动收尾（门已关 + 超过宽限期），
+        // 不再要求物料员专门去开那个格口；只有门还开着/时间太近的才留下提示。
+        OpInterruptedIssueAutoComplete.TryRun();
+        record = App.Bootstrap.OpInterruptedIssue.TryGet();
+        pending = App.Bootstrap.ListIssuePendingSlots();
+
         if (record is null && pending.Count == 0)
             return false;
 

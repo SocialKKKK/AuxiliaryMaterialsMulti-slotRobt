@@ -1,0 +1,31 @@
+id: app.operation_log.mark_auto_pickup
+dialect: sqlite
+datasource: app.sqlite
+operation: write
+business_meaning: >-
+  程序在「MES 领用提交成功、关门确认之前」中断时，启动/巡检按「门已关」自动收尾清库。
+  这条 UPDATE 只给那条仍未关门时刻的 OP 领用记录补一个 detail 说明，证明清库是自动恢复的；
+  它不改写任何业务事实（谁、何时、哪个格口、哪批料、结果都动不了，门时刻仍保持 NULL），
+  库层 trg_app_operation_log_append_only 只放行 detail 这一列。
+  只命中「同一格口 + 同一批号 + 最近一条 + 成功 + 无门时刻」的记录，避免误改历史。
+sql: |
+  UPDATE app_operation_log
+     SET detail = :detail
+   WHERE id = (
+     SELECT id FROM app_operation_log
+      WHERE action_type = 'op_issue_available_wire'
+        AND slot_no = :slot_no
+        AND lot_no = :lot_no
+        AND result = '成功'
+        AND door_close_ts IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+   )
+     AND (detail IS NULL OR detail = '');
+params:
+  - name: detail
+  - name: slot_no
+  - name: lot_no
+outputs:
+  - rows_affected
+result_cardinality: write

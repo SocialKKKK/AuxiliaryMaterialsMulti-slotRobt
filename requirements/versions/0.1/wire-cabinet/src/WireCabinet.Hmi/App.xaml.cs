@@ -39,8 +39,12 @@ public partial class App : Application
         _singleInstanceMutex = new Mutex(true, @"Global\WireCabinet.Hmi", out var createdNew);
         if (!createdNew)
         {
-            Shutdown(0);
-            return;
+            // 已有实例在跑：必须立刻结束本进程，不能走 WPF 的 Shutdown(0)。
+            // App.xaml 配了 StartupUri，Shutdown 只是往 Dispatcher 排队，StartupUri 的
+            // MainWindow 仍会被加载；而本实例没初始化 Bootstrap/Flows，MainWindow→OpView
+            // 构造时 App.Flows/App.UiGate 为 null，抛 NullReferenceException 变成
+            // 0xE0434352 崩溃（现场 2026-10-02～10-26 共 47 次、每次启动 0.6～6 秒即崩的根因）。
+            Environment.Exit(0);
         }
 
         DispatcherUnhandledException += (_, args) =>

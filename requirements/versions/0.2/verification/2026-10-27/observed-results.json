@@ -1,0 +1,133 @@
+{
+  "productBaseline": "2e1086c",
+  "scope": "offline fake RCS and isolated temporary databases",
+  "structure": {
+    "flows": 6,
+    "nodes": 110,
+    "sqlItems": 48,
+    "operationLogColumns": 28,
+    "operationLogAddedColumns": 17,
+    "operationLogSqlItems": 7,
+    "missingSql": [],
+    "invalidRoutes": [],
+    "unknownNodes": 0
+  },
+  "findings": [
+    {
+      "id": "A01",
+      "reproduced": true,
+      "finding": "DI unknown permits interrupted-issue auto cleanup",
+      "evidence": {
+        "hardwareConfigured": true,
+        "ReadOk": false,
+        "LockClosed": null,
+        "databaseDoor": "closed",
+        "displayedOpen": false,
+        "shouldAutoComplete": true,
+        "completed": 1,
+        "afterBizState": "idle",
+        "afterLot": null
+      }
+    },
+    {
+      "id": "A02",
+      "reproduced": true,
+      "finding": "Same-second pending rows receive each other\u0027s close timestamps",
+      "evidence": {
+        "Success": true,
+        "closeASuccess": true,
+        "expectedA": "00:00:10",
+        "expectedB": "00:00:05",
+        "actualA": "2026-10-27 00:00:05",
+        "actualB": "2026-10-27 00:00:10"
+      }
+    },
+    {
+      "id": "A03",
+      "reproduced": true,
+      "finding": "Retry-before-close loses the association with the inserted record",
+      "evidence": {
+        "Success": false,
+        "Error": "\u8865\u9F50\u95E8\u65F6\u523B\uFF1A\u8BB0\u5F55\u672A\u843D\u5E93\uFF0C\u4E14\u5F85\u8865\u507F\u961F\u5217\u91CC\u627E\u4E0D\u5230\u5B83\u3002",
+        "pending": 0,
+        "doorClose": null
+      }
+    },
+    {
+      "id": "A04",
+      "reproduced": true,
+      "finding": "Automatic charging dispatches during an active material workflow",
+      "evidence": {
+        "IsFlowActive": true,
+        "HasActiveSession": true,
+        "charges": 1,
+        "node": "inputOperatorWorkInfo"
+      }
+    },
+    {
+      "id": "A05",
+      "reproduced": true,
+      "finding": "RCS disconnect retains permission to use OP/MH and open doors from stale stopped state",
+      "evidence": {
+        "IsConnected": false,
+        "LastSysState": "IDLE",
+        "LastMoveState": "AT_FINISHED",
+        "CanUseMhPage": true,
+        "CanUseOpPage": true,
+        "mhFlowAllowed": true,
+        "opFlowAllowed": true,
+        "BlocksSlotDoorControls": false,
+        "BlocksMhSlotDoorControls": false
+      }
+    },
+    {
+      "id": "A06",
+      "reproduced": true,
+      "finding": "Automatic dispatch bypasses the station-name error that blocks manual commands",
+      "evidence": {
+        "Ok": false,
+        "Message": "\u5145\u7535\u70B9\u300C\u300D\u6309\u540D\u79F0\u300Cnot-present-in-map\u300D\u5728\u5730\u56FE 22 \u4E0A\u627E\u4E0D\u5230\uFF08\u6216\u91CD\u540D\uFF09",
+        "automaticCharges": 1,
+        "cachedDestination": 99
+      }
+    },
+    {
+      "id": "A07",
+      "reproduced": true,
+      "finding": "Low-battery automatic charging omits its operation-log record",
+      "evidence": {
+        "charges": 1,
+        "records": 0,
+        "pending": 0
+      }
+    },
+    {
+      "id": "A08",
+      "reproduced": true,
+      "finding": "Reload mutates the same slot list consumed by concurrent UI enumeration",
+      "evidence": {
+        "error": "Collection was modified; enumeration operation may not execute.",
+        "slots": 54
+      }
+    },
+    {
+      "id": "A09",
+      "reproduced": true,
+      "finding": "Recovery detail is invisible in the exported explanation",
+      "evidence": {
+        "storedDetail": "\u7A0B\u5E8F\u4E2D\u65AD\uFF1B\u542F\u52A8\u5DE1\u68C0\u6309\u95E8\u5DF2\u5173\u81EA\u52A8\u5B8C\u6210\u6E05\u5E93\uFF08\u539F\u95E8\u65F6\u523B\u672A\u8BB0\u5F55\uFF09",
+        "exportedExplanation": "\u9886\u7528\u63D0\u4EA4\u5B8C\u6210"
+      }
+    },
+    {
+      "id": "B01",
+      "reproduced": true,
+      "finding": "Database trigger protects UPDATE only; direct DELETE is allowed",
+      "evidence": {
+        "HasError": false,
+        "RowsAffected": 1,
+        "remaining": 0
+      }
+    }
+  ]
+}
